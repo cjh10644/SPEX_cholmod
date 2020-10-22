@@ -47,9 +47,6 @@ SPEX_info SPEX_LUU
     // push column k to position n-1
     while (k < n-1)
     {
-        // if both case 1 and 2
-        // if both case 1 and 3
-        // if both case 2 and 3
         if (inext < n)
         {
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, Lk_dense_col[P[inext]]));
@@ -63,34 +60,76 @@ SPEX_info SPEX_LUU
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, Uk_dense_col[Q[jnext]]));
             if (sgn == 0)
             {
-                SPEX_CHECK(spex_find_next_nz(&jnext, U, Uk_dense_col, Q_inv,k));
+                SPEX_CHECK(spex_find_next_nz(&jnext, U, Uk_dense_col,
+                Q_inv,k));
             }
         }
 
-        ks = SPEX_MIN(inext, jnext);
-        if (ks > k+1 && jnext > inext)
+        if (inext == n)
         {
+            // if L(:,k) has zero off-diagonal, then only perform dppu
+            ks = n-1;
             while (ks > k+1)
             {
-                if (L_row_offdiag[ks] <= k && U_row_offdiag[ks] <= k)
+                if (L_row_offdiag[ks] <= k && U_col_offdiag[ks] <= k)
                 {
                     break;
                 }
                 ks--;
             }
-            SPEX_CHECK(spex_dppu1());
-        }
-        else if (inext == n+1 && jnext < inext)
-        {
-            ks = n-1;
-            while (ks > k+1)
+            if (jnext > ks)
             {
+                SPEX_CHECK(spex_dppu1());
+            }
+            else
+            {
+                SPEX_CHECK(spex_dppu2());
             }
         }
         else
         {
+            // remaining entries in current row of U are 0s, check inserted col
+            if (jnext == n)
+            {
+                if (L(k,n) == 0) //TODO
+                {
+                    SPEX_FREE_WORK;
+                    return SPEX_SINGULAR;
+                }
+                else
+                {
+                    ks = n;
+                    SPEX_CHECK(spex_cppu());
+                }
+            }
+            else if (U_col_offdiag[jnext] == k || inext == k+1)
+            {
+                ks = jnext;
+                SPEX_CHECK(spex_cppu());
+            }
+            else
+            {
+                ks = (inext < jnext) ? inext: jnext-1;
+                while (ks > k+1)
+                {
+                    if (L_row_offdiag[ks] <= k && U_col_offdiag[ks] <= k)
+                    {
+                        break;
+                    }
+                    ks--;
+                }
+                SPEX_CHECK(spex_dppu1());
+                if (inext == n)
+            }
         }
 
         k = ks;
     }
+    // move the entry from Lk_dense_col
+
+    // update row/column permutation
+    Q[n] = Q[n+1];
+    
+    SPEX_FREE_WORK;
+    return SPEX_OK;
 }

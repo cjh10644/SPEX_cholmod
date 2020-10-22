@@ -49,7 +49,8 @@ SPEX_info spex_cppu
     int sgn;
     int64_t pk, ck, pks, cks;
     // the pointer for U(k,Q(ks)) = U->v[k]->x[Ucx[Ucp_k_ks]]
-    int64_t Ucp_k_ks;
+    // initialized to be 2nd last entry in the Q[ks]-th col of U
+    int64_t Ucp_k_ks = Ucp[Q[ks]+1]-2;
     int64_t *h;  // history vector
 
     mpq_t pending_scale, tmp_mpq;
@@ -73,14 +74,14 @@ SPEX_info spex_cppu
     // to column k of L and entries in column ks of L are moved to
     // Lk_dense_col.
     //-------------------------------------------------------------------------
-    // when ks = k+1, there is no need to make a copy of Lk_dense_col. Instead,
-    // we can direct operate on Lk_dense_col.
-    // when ks > k+1, Lk_dense_col will firstly be moved to L->v[k]->x in a
+    // When U(k+1:ks-1,Q(ks)) are all zero(s), there is no need to make a copy
+    // of Lk_dense_col. Instead, we can direct operate on Lk_dense_col.
+    // Otherwise, Lk_dense_col will firstly be moved to L->v[k]->x in a
     // compressed-column form. Then Lk_dense_col will make a copy of ks-th
     // column of scaled L and scaled U(k:ks-1,Q(ks)). Backtracking will be
     // performed on Lk_dense_col for each nonzero in U(k:ks-1, Q(ks)).
     //-------------------------------------------------------------------------
-    if (ks == k+1)
+    if (Unj[Ucp_k_ks] == k) // 2nd last nnz in U(:,Q(ks)) is at row k
     {
         // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 
         // backtracking jumbled sparse column ks of L using 'dense' column k of
@@ -108,21 +109,20 @@ SPEX_info spex_cppu
                                 SPEX_MPQ_DEN(SPEX_2D(S, 2, k))));
         SPEX_CHECK(SPEX_mpz_mul(Uiks, Uiks,
                                 SPEX_MPQ_NUM(SPEX_2D(S, 2, k))));
-        // update d[k]
+        // update d[k] = U(k, Q(ks))
         SPEX_CHECK(SPEX_mpz_set(d[k], Uk_dense_row[Q[ks]]));
 
         if (k > 0)
         {
             SPEX_CHECK(SPEX_mpz_set_z(pending_scale, sd[k-1]));
-            SPEX_CHECK(SPEX_mpq_set_den(pending_scale, sd[k]));
-            // remove common factor in mpq_den and mpq_num
-            SPEX_CHECK(SPEX_mpq_canonicalize(pending_scale));
         }
         else
         {
             SPEX_CHECK(SPEX_mpq_set_ui(pending_scale, 1, 1));
-            SPEX_CHECK(SPEX_mpq_set_den(pending_scale, sd[k]));
         }
+        SPEX_CHECK(SPEX_mpq_set_den(pending_scale, sd[ks-1]));
+        // remove common factor in mpq_den and mpq_num
+        SPEX_CHECK(SPEX_mpq_canonicalize(pending_scale));
         SPEX_CHECK(SPEX_mpq_mul(pending_scale, pending_scale, SPEX_2D(S,1,ks)));
         SPEX_CHECK(SPEX_mpq_mul(pending_scale, pending_scale, SPEX_2D(S,3,ks)));
         // perform backtracking for each nonzero in col ks of L and store
@@ -199,9 +199,9 @@ SPEX_info spex_cppu
         L->v[k]->nz = pk;
 
         // get the pointer for U(k,Q(ks)) = U->v[k]->x[Ucx[Ucp_k_ks]]
-        Ucp_k_ks = Ucp[Q[ks]+1]-2; // 2nd last entry in the Q[ks]-th col of U
+        // Ucp_k_ks = Ucp[Q[ks]+1]-2; // 2nd last entry in the Q[ks]-th col of U
     }
-    else  // ks > k+1
+    else  // U(ks+1:k-1,Q(ks)) contains nnz(s)
     {
         // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
         // construct column k of L based on Lk_dense_col
