@@ -27,7 +27,7 @@ SPEX_info SPEX_LUU
     mpz_t *sd,
     int64_t *P,
     int64_t *Q,
-    mpz_t *vk,
+    SPEX_vector *vk,
     int64_t *k
 )
 {
@@ -36,6 +36,13 @@ SPEX_info SPEX_LUU
     int sgn;
     int64_t ks;
 
+    h_for_vk = SPEX_calloc(h, n*sizeof(int64_t));
+    if (h_for_vk == NULL)
+    {
+        SPEX_FREE_WORK;
+        return SPEX_OUT_OF_MEMORY;
+    }
+
     // get the row-wise nnz pattern for L and column-wise nnz pattern for U
     SPEX_CHECK(spex_get_nnz_pattern());
 
@@ -43,6 +50,12 @@ SPEX_info SPEX_LUU
     // build Lk_dense_col and Uk_dense_row
     SPEX_CHECK(spex_get_dense_Ak(Lk_dense_col, L, inext));
     SPEX_CHECK(spex_get_dense_Ak());
+
+    // initialize history vector for the inserted column
+    for (p = 0; p < vk->nz; p++)
+    {
+        h_for_vk[vk->i[p]] = -1;
+    }
 
     // push column k to position n-1
     while (k < n-1)
@@ -64,16 +77,43 @@ SPEX_info SPEX_LUU
                 Q_inv,k));
             }
         }
+        // report singular if remaining entries in current row of U are 0s and
+        // the current row of the inserted col is also 0
+        if (jnext == n && U(k,n) == 0) //TODO
+        {
+            SPEX_FREE_WORK;
+            return SPEX_SINGULAR;
+        }
 
+        //----------------------------------------------------------------------
+        // if L(:,k) has zero off-diagonal, then only perform dppu, which will
+        // maintain the sparsity of L(:,k). Use dppu1 if possible.
+        // When arriving the last iteration, always check if the new column
+        // can be used as a better alternative.
+        //----------------------------------------------------------------------
         if (inext == n)
         {
-            // if L(:,k) has zero off-diagonal, then only perform dppu
             ks = n-1;
             while (ks > k+1)
             {
-                if (L_row_offdiag[ks] <= k && U_col_offdiag[ks] <= k)
+                if (L_row_offdiag[ks] <= k)
                 {
-                    break;
+                    if (ks == n-1 && U(n-1,n) != 0 && U_col_offdiag[n] <= k)//TODO
+                    {
+                        // TODO: get the k-th IPGE update of inserted
+                        // column
+                        if (Ux(n-1,n) != 0 && // TODO
+                            (U_col_offdiag[ks] > k ||
+                             (U_col_offdiag[ks] <= k && 
+                              abs(Ux(n-1,n-1)) > abs(Ux(n-1,n)) )))//TODO
+                        {
+                            // TODO: swap columns n-1 and n
+                        }
+                    }
+                    if (U_col_offdiag[ks] <= k)
+                    {
+                        break;
+                    }
                 }
                 ks--;
             }
@@ -88,19 +128,14 @@ SPEX_info SPEX_LUU
         }
         else
         {
-            // remaining entries in current row of U are 0s, check inserted col
-            if (jnext == n)
+            if (jnext == n ||
+                (jnext == n-1 && U(k,n) != 0 && abs(U(k,n-1)) > abs(U(k,n))))
             {
-                if (L(k,n) == 0) //TODO
-                {
-                    SPEX_FREE_WORK;
-                    return SPEX_SINGULAR;
-                }
-                else
-                {
-                    ks = n;
-                    SPEX_CHECK(spex_cppu());
-                }
+                // TODO: get the k-th IPGE update of inserted column and swap
+                // with column n-1, report singularity if U(k,n) get exactly
+                // cancelled
+                ks = n-1;
+                SPEX_CHECK(spex_cppu());
             }
             else if (U_col_offdiag[jnext] == k || inext == k+1)
             {
@@ -123,6 +158,9 @@ SPEX_info SPEX_LUU
             }
         }
 
+        // update the history vector for the inserted column by adding fillin TODO
+
+        // update k
         k = ks;
     }
     // move the entry from Lk_dense_col
