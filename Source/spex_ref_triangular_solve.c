@@ -29,7 +29,7 @@
 SPEX_info spex_triangular_solve
 (
     mpz_t *x,
-    mpz_t Sx,
+    mpq_t Sx,
     bool *target_IS_zero,
     SPEX_matrix *L,
     SPEX_vector *v,
@@ -56,21 +56,11 @@ SPEX_info spex_triangular_solve
 
     if (*last_update < k-1)
     {
-        for (j = *last_update+1; j < k; j++)
+        for (j = *last_update+1; j < k; j++)// TODO iterate sorted nnz pattern?
         {
             // skip if x(P[j]) == 0
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, x[P[j]]));
-            if (sgn == 0)
-            {
-                // TODO remove? this should not happen
-                if (j == target_index)
-                {
-                    *target_IS_zero = true;
-                    SPEX_FREE_WORK;
-                    return SPEX_OK;
-                }
-                continue;
-            }
+            if (sgn == 0)       { continue; }
 
             // perform j-th IPGE update for x
             SPEX_CHECK(spex_ipge());

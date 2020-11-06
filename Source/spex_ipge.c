@@ -17,9 +17,10 @@
 // iteration with no need for history update, this function should not be used.
 // This function is called by the following three functions:
 // spex_dppu2: successive IPGE update for row k of U after swapping with row
-//             ks of U
+//             ks of U.
+// spex_cppu: compute the (n-1)-th IPGE update of column k after vk is inserted.
 // spex_triangular_solve: the REF triangular solve for LDx=v when L and v are
-//             sparse
+//             sparse.
 // spex_forward_sub: the forward substitution when solving LDUx=b, which is
 //             essensially REF triangular solve for LDx=b when b is dense.
 //
@@ -60,40 +61,32 @@ SPEX_info spex_ipge
     int64_t *h,
     int64_t *perm,
     mpz_t *sd,
-    mpz_t x_scale,
-    mpz_t v_scale,
-    SPEX_matrix *L,
+    mpq_t x_scale,
+    mpq_t v_scale,
     int64_t diag_j,
     int64_t j
 )
 {
     SPEX_info info;
-    int64_t p, i, real_h, x_nz;
+    int64_t p, i, real_hj, real_hi, x_nz;
     int sgn;
     if (x_sparse != NULL)
     {
         x_nz = x_sparse->nz;
     }
+    else
+    {
+        return SPEX_INCORRECT_INPUT;
+    }
 
     // pending_scale = x[perm[j]]/sd[h[perm[j]]]
-    real_h = SPEX_FLIP(h[perm[j]]);
+    real_hj = SPEX_FLIP(h[perm[j]]);
     SPEX_CHECK(SPEX_mpq_set_z(pending_scale, x[perm[j]]));
-    if (real_h > -1)
+    if (real_hj > -1)
     {
-        SPEX_CHECK(SPEX_mpq_set_den(pending_scale, sd[real_h]));
+        SPEX_CHECK(SPEX_mpq_set_den(pending_scale, sd[real_hj]));
         SPEX_CHECK(SPEX_mpq_canonicalize(pending_scale));
     }
-    // x(perm(j)) = x[perm[j]]*x_scale*history_update
-    if (j-1 > real_h) // require history update
-    {
-        SPEX_CHECK(SPEX_mpz_mul(x[perm[j]], x[perm[j]], sd[j-1]));
-        if (real_h > -1)
-        {
-            SPEX_CHECK(SPEX_mpz_divexact(x[perm[j]], x[perm[j]], sd[real_h]));
-        }
-    }
-    SPEX_CHECK(SPEX_mpz_divexact(x[perm[j]], x[perm[j]],SPEX_MPQ_DEN(x_scale)));
-    SPEX_CHECK(SPEX_mpz_mul(x[perm[j]], x[perm[j]], SPEX_MPQ_NUM(x_scale)));
     // NOTE: this could cause fillin in x 
     for (p = 0; p < v->nz; p++)
     {
@@ -102,8 +95,14 @@ SPEX_info spex_ipge
         {
             continue;
         }
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, v->x[p]));
+        if (sgn == 0)    // v[i] == 0
+        {
+            continue;
+        }
         // column/row index in v
         i = v->i[p];
+        real_hi = SPEX_FLIP(h[i]);
 
         // x[i] = floor(x[i]*v[perm[j]]/sd[h[i]])
         SPEX_CHECK(SPEX_mpz_sgn(&sgn, x[i]));
@@ -111,10 +110,9 @@ SPEX_info spex_ipge
         {
             // x[i] = x[i]*v[perm[j]]
             SPEX_CHECK(SPEX_mpz_mul(x[i], x[i], v->x[diag_j]));
-            real_h = SPEX_FLIP(h[i]);
-            if (real_h > -1)
+            if (real_hi != real_hj && real_hi > -1)
             {
-                SPEX_CHECK(SPEX_mpz_fdiv_q(x[i], x[i], sd[real_h]));
+                SPEX_CHECK(SPEX_mpz_fdiv_q(x[i], x[i], sd[real_hi]));
             }
         }
         else if (h[i] >= -1) // this entry was not in nnz pattern
@@ -130,35 +128,49 @@ SPEX_info spex_ipge
                 jnext = Q_inv[i];
             }
 
-            if (x_sparse != NULL)
+            // reallocate the nonzero pattern if needed
+            if (x_nz == x_sparse->max_nnz)
             {
-                // reallocate the nonzero pattern if needed
-                if (x_nz == x_sparse->max_nnz)
-                {
-                    SPEX_CHECK(spex_expand(&x_sparse));
-                }
-                // insert new entry in the nonzero pattern
-                x_sparse->i[x_nz] = i;
-                x_nz++;
+                SPEX_CHECK(spex_expand(&x_sparse));
             }
+            // insert new entry in the nonzero pattern
+            x_sparse->i[x_nz] = i;
+            x_nz++;
         }
-        // tmp_mpz = floor(v(i)*pending_scale)
-        SPEX_CHECK(SPEX_mpz_mul(tmp_mpz, v->x[p],
-                                SPEX_MPQ_NUM(pending_scale)));
-        SPEX_CHECK(SPEX_mpz_fdiv_q(tmp_mpz, tmp_mpz,
-                                SPEX_MPQ_DEN(pending_scale)));
-        // x[i] = x[i]- tmp_mpz
-        SPEX_CHECK(SPEX_mpz_sub(x[i], x[i], tmp_mpz));
+        if (real_hi != real_hj)
+        {
+            // tmp_mpz = floor(v(i)*pending_scale)
+            SPEX_CHECK(SPEX_mpz_mul(tmp_mpz, v->x[p],
+                                    SPEX_MPQ_NUM(pending_scale)));
+            SPEX_CHECK(SPEX_mpz_fdiv_q(tmp_mpz, tmp_mpz,
+                                    SPEX_MPQ_DEN(pending_scale)));
+            // x[i] = x[i]- tmp_mpz
+            SPEX_CHECK(SPEX_mpz_sub(x[i], x[i], tmp_mpz));
+        }
+        else
+        {
+            SPEX_CHECK(SPEX_mpz_addmul(x[i], v->x[p], x[perm[j]]));
+            SPEX_CHECK(SPEX_divexact(x[i], x[i], sd[real_hi]));
+        }
 
         // update h[i] and last_nz_b4_ks
         h[i] = SPEX_FLIP(j);
     }
 
-    if (x_sparse != NULL)
+    // update # of nnz in x
+    x_sparse->nz = x_nz;
+
+    // x(perm(j)) = x[perm[j]]*x_scale*history_update
+    if (j-1 > real_hj) // require history update
     {
-        // update # of nnz in x
-        x_sparse->nz = x_nz;
+        SPEX_CHECK(SPEX_mpz_mul(x[perm[j]], x[perm[j]], sd[j-1]));
+        if (real_hj > -1)
+        {
+            SPEX_CHECK(SPEX_mpz_divexact(x[perm[j]], x[perm[j]], sd[real_hj]));
+        }
     }
+    SPEX_CHECK(SPEX_mpz_divexact(x[perm[j]], x[perm[j]],SPEX_MPQ_DEN(x_scale)));
+    SPEX_CHECK(SPEX_mpz_mul(x[perm[j]], x[perm[j]], SPEX_MPQ_NUM(x_scale)));
 
     // update scaling for x, since the scaling for v is skipped
     // x_scale=x_scale*v_scale.

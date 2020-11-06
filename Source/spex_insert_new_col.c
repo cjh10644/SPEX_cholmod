@@ -24,7 +24,7 @@
 SPEX_info spex_insert_new_col
 (
     mpz_t *x,
-    mpz_t Sx,
+    mpq_t Sx,
     SPEX_matrix *L,
     SPEX_vector *v,
     int64_t k,
