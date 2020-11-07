@@ -142,6 +142,7 @@ SPEX_info spex_ipge
             // tmp_mpz = floor(v(i)*pending_scale)
             SPEX_CHECK(SPEX_mpz_mul(tmp_mpz, v->x[p],
                                     SPEX_MPQ_NUM(pending_scale)));
+            // TODO change or fdiv and cdiv to divexact?
             SPEX_CHECK(SPEX_mpz_fdiv_q(tmp_mpz, tmp_mpz,
                                     SPEX_MPQ_DEN(pending_scale)));
             // x[i] = x[i]- tmp_mpz

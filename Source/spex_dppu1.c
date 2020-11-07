@@ -447,8 +447,7 @@ SPEX_info spex_dppu1
                 L->v[ks]->i[pks] = ck;
                 pks++;
             }
-            SPEX_CHECK(SPEX_mpz_submul(Lk_dense_col[ck],
-                                       L->v[k]->x[pk], Lksk));
+            SPEX_CHECK(SPEX_mpz_submul(Lk_dense_col[ck], L->v[k]->x[pk], Lksk));
             if (k > 0)
             {
                 SPEX_CHECK(SPEX_mpz_divexact(Lk_dense_col[ck],

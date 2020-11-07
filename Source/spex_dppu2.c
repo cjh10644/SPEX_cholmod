@@ -178,6 +178,9 @@ SPEX_info spex_dppu2
         tmp_int = Q[k];    Q[k] = Q[ks];          Q[ks] = tmp_int;
         tmp_int = P[k];    P[k] = P[ks];          P[ks] = tmp_int;
 
+        // update Ldiag[k] = Ldiag[ks], no need to update Ldiag[ks] or Udiag
+        Ldiag[k] = Ldiag[ks];
+
         //----------------------------------------------------------------------
         // update entries in frames between k and ks
         //----------------------------------------------------------------------
@@ -284,7 +287,7 @@ SPEX_info spex_dppu2
         {
             for (pj = 0; pj < L->v[j]->nz; pj++)
             {
-                if ((j != k && pj == Ldiag[j]) || (j == k && pj == Ldiag[ks]))
+                if (pj == Ldiag[j])
                 {
                     // L(P(j), j) = sd[j]
                     SPEX_CHECK(SPEX_mpz_set(L->v[j]->x[pj], sd[j]));

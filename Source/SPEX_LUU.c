@@ -201,6 +201,22 @@ SPEX_info SPEX_LUU
                 // TODO handle column n in dppu and cppu
                 // get the k-th IPGE update of inserted column
                 SPEX_CHECK(spex_ref_triangular_solve());
+ /*               // apply history update and pending scaling factor to vk[P[k]]
+                real_h = SPEX_FLIP(h_for_vk[P[k]]);
+                if (real_h < k-1)
+                {
+                    SPEX_CHECK(SPEX_mpz_mul(vk[P[k]], vk[P[k]], sd[k-1]));
+                    if (real_h > -1)
+                    {
+                        SPEX_CHECK(SPEX_mpz_divexact(vk[P[k]],
+                                                     vk[P[k]], sd[real_h]));
+                    }
+                }
+                SPEX_CHECK(SPEX_mpz_divexact(vk[P[k]],
+                                        vk[P[k]], SPEX_MPQ_DEN(vk_scale)));
+                SPEX_CHECK(SPEX_mpz_mul(vk[P[k]],
+                                        vk[P[k]], SPEX_MPQ_NUM(vk_scale)));
+*/
                 ks = n;
             }
             if (jnext > ks)
