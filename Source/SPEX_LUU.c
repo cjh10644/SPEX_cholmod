@@ -10,87 +10,110 @@
 
 // Purpose: This function is to perform LU update for column replacement
 
-#define SPEX_FREE_WORK               \
-    SPEX_MPZ_CLEAR(Uiks);            \
-    SPEX_MPQ_CLEAR(one);             \
-    SPEX_MPQ_CLEAR(pending_scale);   \
-    SPEX_MPQ_CLEAR(tmp_mpz);         \
-    SPEX_FREE(h);
+#define SPEX_FREE_ALL                \
+    SPEX_FREE(&h);                   \
+    SPEX_FREE(&h_for_vk);            \
+    SPEX_FREE(&Ldiag);               \
+    SPEX_FREE(&Lr_offdiag);          \
+    SPEX_FREE(&Uci);                 \
+    SPEX_FREE(&Ucp);                 \
+    SPEX_FREE(&Ucx);                 \
+    SPEX_FREE(&Lk_dense_col);        \
+    SPEX_FREE(&Uk_dense_row);        \
+    SPEX_FREE(&vk_dense);            \
+    SPEX_MPZ_CLEAR();            \
+    SPEX_MPQ_CLEAR(vk_scale);             \
+    SPEX_MPQ_CLEAR();   \
+    SPEX_MPQ_CLEAR();         \
 
 #include "spex_internal.h"
 
 SPEX_info SPEX_LUU
 (
-    SPEX_matrix *L,
-    SPEX_matrix *U,
-    mpz_t *d,
-    mpz_t *sd,
-    int64_t *P,
-    int64_t *Q,
-    SPEX_vector *vk,
-    int64_t *k
+    SPEX_matrix *L,         // stored in compressed-column form
+    SPEX_matrix *U,         // stored in comptessed-row form
+    mpz_t *d,               // an array of size n that stores the unscaled pivot
+    mpz_t *sd,              // an array of size n that stores the scaled pivot
+    mpq_t *S,               // an array of size 3*n that stores pending scales
+    int64_t *P,             // row permutation
+    int64_t *P_inv,         // inverse of row permutation
+    int64_t *Q,             // column permutation
+    int64_t *Q_inv,         // inverse of column permutation
+    SPEX_vector *vk,        // the inserted column
+    bool keep_vk,           // indicate if the vector vk will be keep unchanged
+    int64_t k,              // the column index that vk will be inserted
+    const SPEX_option *option// command parameters
 )
 {
     // initialize workspace
     SPEX_info info;
-    int sgn;
-    int64_t ks;
+    if (!spex_initialized()) {return SPEX_PANIC;}
 
-    h_for_vk = SPEX_calloc(h, n*sizeof(int64_t));
-    if (h_for_vk == NULL)
+    if (L->n != U->n)
     {
-        SPEX_FREE_WORK;
+        return SPEX_INCORRECT_INPUT;
+    }
+    int sgn;
+    int64_t ks, p, i, j, inext, jnext, n = L->n;
+    int64_t *h = NULL, *h_for_vk = NULL, *Ldiag = NULL, *Lr_offdiag = NULL,
+        *Uci = NULL, *Ucp = NULL, *Ucx = NULL, *map = NULL;
+    spex_scattered_vector *Lk_dense_col = NULL, *Uk_dense_row = NULL,
+        *vk_dense = NULL;
+    mpq_t vk_scale; SLIP_MPQ_SET_NULL(vk_scale);
+    SPEX_CHECK(SPEX_mpq_init(vk_scale));
+
+    h        = (int64_t*) SPEX_calloc(n, sizeof(int64_t));
+    h_for_vk = (int64_t*) SPEX_calloc(n, sizeof(int64_t));
+    map      = (int64_t*) SPEX_malloc(n* sizeof(int64_t));
+    if (!h || !h_for_vk || !map)
+    {
+        SPEX_FREE_ALL;
         return SPEX_OUT_OF_MEMORY;
     }
 
     // get the row-wise nnz pattern for L and column-wise nnz pattern for U
-    SPEX_CHECK(spex_get_nnz_pattern());
+    SPEX_CHECK(spex_get_nnz_pattern(&Ldiag, &Lr_offdiag, &Uci, &Ucp, &Ucx,
+        L, U, option));
 
     k = Q_inv(k);
-    // build Lk_dense_col and Uk_dense_row
-    SPEX_CHECK(spex_get_dense_Ak(Lk_dense_col, L, inext));
-    SPEX_CHECK(spex_get_dense_Ak());
+    // build Lk_dense_col and Uk_dense_row, remove explicit 0 if k == 0
+    SPEX_CHECK(spex_get_scattered_v(Lk_dense_col, L->v[k], (k == 0), false));
+    SPEX_CHECK(spex_get_scattered_v(Uk_dense_row, U->v[k], (k == 0), false));
 
-    // initialize history vector for the inserted column
-    vk_2ndlastnz = -1;
-    for (p = 0; p < vk->nz; p++)
+    // initialize environment for the inserted column
+    SPEX_CHECK(spex_get_scattered_v(vk_dense, vk, true, keep_vk));
+    int64_t last_update = -1;
+    int64_t vk_2ndlastnz = -1;
+    SPEX_CHECK(SPEX_mpq_set_ui(vk_scale, 1, 1));
+    for (p = 0; p < vk_dense->nz; p++)
     {
-        i = vk->i[p];
-        if (i > vk_2ndlastnz && i != n-1) { vk_2ndlastnz = i;}
-        h_for_vk[i] = -1;
-    }
-    // update the nnz pattern up to k-th IPGE
-    for (j = 0; j < k; j++)// TODO iterate sorted nnz pattern?
-    {
-        if (h_for_vk[P[j]] == -1) // if this entry is nnz
+        i = vk_dense->i[p];
+        if (P_inv[i] > vk_2ndlastnz && P_inv[i] != n-1)
         {
-            for (p = 0; p < L->v[j]->nz; p++)
-            {
-                i = L->v[j]->i[p];
-                if (h_for_vk[i] != -1) // if this entry isn't in the nnz pattern
-                {
-                    if (i > vk_2ndlastnz && i != n-1) { vk_2ndlastnz = i;}
-                    h_for_vk[i] = -1;
-                    vk->i[vk->nz] = i;
-                    vk->nz ++;
-                }
-            }
+            vk_2ndlastnz = P_inv[i];
         }
+        h_for_vk[i] = -1;
     }
 
     // initialize certain variables required by the loop
-    last_max_ks = k;
-    use_col_n = 0; // 0: unknown; 1: use; -1: don't use
+    int64_t maximum, last_max_ks = k;
+    int64_t use_col_n = 0; // 0: unknown; 1: use; -1: don't use
+    SPEX_CHECK(spex_find_next_nz(&inext, Lk_dense_col, P_inv, k));
+    SPEX_CHECK(spex_find_next_nz(&jnext, Uk_dense_col, Q_inv, k));
 
     // push column k to position n-1
     while (k < n-1)
     {
+        // get the k-th IPGE update of inserted column
+        SPEX_CHECK(spex_ref_triangular_solve(vk_dense, vk_scale, h_for_vk, vk,
+            &last_update, &vk_2ndlastnz, L, S, k, P, sd));
+
         if (inext < n)
         {
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, Lk_dense_col[P[inext]]));
             if (sgn == 0)
             {
-                SPEX_CHECK(spex_find_next_nz(&inext, L, Lk_dense_col, P_inv,k));
+                SPEX_CHECK(spex_find_next_nz(&inext, Lk_dense_col, P_inv, k));
             }
         }
         if (jnext < n)
@@ -98,15 +121,22 @@ SPEX_info SPEX_LUU
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, Uk_dense_col[Q[jnext]]));
             if (sgn == 0)
             {
-                SPEX_CHECK(spex_find_next_nz(&jnext, U, Uk_dense_col,
-                Q_inv,k));
+                SPEX_CHECK(spex_find_next_nz(&jnext, Uk_dense_col, Q_inv, k));
             }
         }
-        // report singular if remaining entries in current row of U are 0s and
-        // the current row of the inserted col is also 0
-        if (jnext == n && h_for_vk[k] > -1)
+        // report singular if 
+        // - remaining entries in current row of U are 0s and the current row
+        //   of vk is also 0 (if last_update == k, vk_dense[P[k]] is zero).
+        // - OR all entries below (k-1)-th row in vk are zeros
+        // - OR all off-diagonal entries below (k-1)-th row in vk
+        //   and column n-1 of U are zeros
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense[P[n-1]]));
+        if ((jnext == n && last_update == k) ||
+            (vk_2ndlastnz <= k &&
+             (sgn == 0 || Ucp[Q[n-1]+1]-Ucp[Q[n-1]] == 1 ||
+              Uci[Ucp[Q[n-1]+1]-2] < k                     )))
         {
-            SPEX_FREE_WORK;
+            SPEX_FREE_ALL;
             return SPEX_SINGULAR;
         }
 
@@ -123,8 +153,15 @@ SPEX_info SPEX_LUU
             {
                 for (j = k+1; j <= n-2; j++)
                 {
-                    maximum = SPEX_MAX(L_row_offdiag[P[j]],
-                                       U_col_offdiag[Q[j]]);
+                    if (Ucp[Q[j]+1] - Ucp[Q[j]] == 1)
+                    {
+                        // no off-diag in column Q[j] of U
+                        maximum = SPEX_MAX(Lr_offdiag[P[j]], -1);
+                    }
+                    else
+                    {
+                        maximum = SPEX_MAX(Lr_offdiag[P[j]],Uci[Ucp[Q[j]+1]-2]);
+                    }
                     for (i = k; i < j;)
                     {
                         if (maximum <= i)
@@ -140,43 +177,22 @@ SPEX_info SPEX_LUU
 
             // use the inserted column only when its last entry is nnz and
             // using it instead of column n-1 can make a bigger jump.
-            if (use_col_n == 0 && L_row_offdiag[P[n-1]] < k)
+            if (use_col_n == 0 && Lr_offdiag[P[n-1]] < k)
             {
-                if (U(n-1, n) == 0)
+                if (sgn == 0)// vk_dense[P[n-1]] == 0
                 {
+                    // the inserted column cannot be used
                     use_col_n = -1;
                 }
                 else
                 {
-                    // get the k-th IPGE update of inserted column
-                    SPEX_CHECK(spex_ref_triangular_solve());
-                    SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk[P[n-1]]));
-                    if ((target_IS_zero &&
-                         (jnext == n || (vk_2ndlastnz <= k && sgn == 0))) ||
-                        (U_col_offdia[Q[n-1]] < k && vk_2ndlastnz < k)      ) 
+                    if (U_col_offdiag[Q[n-1]] > vk_2ndlastnz)
                     {
-                        // report singularity if U(k,n) is exactly cancelled
-                        // or all entries below (k-1)-th row in vk are zeros
-                        // or all off-diagonal entries below (k-1)-th row in vk
-                        // and column n-1 of U are zeros
-                        SPEX_FREE_WORK;
-                        return SPEX_SINGULAR;
-                    }
-                    else if (sgn == 0)
-                    {
-                        // the inserted column cannot be used
-                        use_col_n = -1;
+                        use_col_n = 1;
                     }
                     else
                     {
-                        if (U_col_offdiag[Q[n-1]] > vk_2ndlastnz)
-                        {
-                            use_col_n = 1;
-                        }
-                        else
-                        {
-                            use_col_n = -1;
-                        }
+                        use_col_n = -1;
                     }
                 }
                 maximum = SPEX_MAX(L_row_offdiag[P[n-1]],
@@ -198,10 +214,7 @@ SPEX_info SPEX_LUU
             ks = map[k];
             if (ks = n-1 && use_col_n == 1)
             {
-                // TODO handle column n in dppu and cppu
-                // get the k-th IPGE update of inserted column
-                SPEX_CHECK(spex_ref_triangular_solve());
- /*               // apply history update and pending scaling factor to vk[P[k]]
+                // apply history update and pending scaling factor to vk[P[k]]
                 real_h = SPEX_FLIP(h_for_vk[P[k]]);
                 if (real_h < k-1)
                 {
@@ -216,10 +229,10 @@ SPEX_info SPEX_LUU
                                         vk[P[k]], SPEX_MPQ_DEN(vk_scale)));
                 SPEX_CHECK(SPEX_mpz_mul(vk[P[k]],
                                         vk[P[k]], SPEX_MPQ_NUM(vk_scale)));
-*/
+
                 ks = n;
             }
-            if (jnext > ks)
+            if (jnext > ks || (ks == n && jnext == n))
             {
                 SPEX_CHECK(spex_dppu1());
             }
@@ -243,35 +256,20 @@ SPEX_info SPEX_LUU
             // U_col_offdiag[n] < k && L_row_offdiag[n-1] <= k && inext >= n-1.
             if (use_col_n == 0 && jnext >= n-1)
             {
-                // prepare the inserted column to be swapped with k-th
-                // column, i.e., perform (k-1)-th IPGE update for the
-                // inserted column.
-                SPEX_CHECK(spex_ref_triangular_solve());
-                if (target_IS_zero)
+                if (last_update == k) // vk[P[k]] == 0
                 {
-                    SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk[P[n-1]]));
-                    if (jnext == n || (vk_2ndlastnz <= k && sgn == 0))
+                    if (sgn != 0 /*vk[P[n-1]] != 0*/ && vk_2ndlastnz <= k &&
+                        L_row_offdiag[P[n-1]] <= k && inext >= n-1)
                     {
-                        // report singularity if U(k,n) is exactly cancelled
-                        // or all entries below (k-1)-th row in vk are zeros
-                        SPEX_FREE_WORK;
-                        return SPEX_SINGULAR;
+                        // swap columns n and n-1
+                        ks = n;
+                        SPEX_CHECK(spex_dppu1());
+                        break;
                     }
                     else
                     {
-                        if (sgn != 0 && vk_2ndlastnz < k &&
-                            L_row_offdiag[P[n-1]] <= k && inext >= n-1)
-                        {
-                            // swap columns n and n-1
-                            ks = n;
-                            SPEX_CHECK(spex_dppu1());
-                            break;
-                        }
-                        else
-                        {
-                            // the inserted column cannot be used
-                            use_col_n = -1;
-                        }
+                        // the inserted column cannot be used
+                        use_col_n = -1;
                     }
                 }
                 else
@@ -323,25 +321,6 @@ SPEX_info SPEX_LUU
             }
         }
 
-        // update the history vector for the inserted column by adding fillin
-        for (j = k; j < ks; j++)// TODO iterate sorted nnz pattern?
-        {
-            if (h_for_vk[P[j]] == -1) // if this entry is nnz
-            {
-                for (p = 0; p < L->v[j]->nz; p++)
-                {
-                    i = L->v[j]->i[p];
-                    if (h_for_vk[i] > -1) // add only if not in the nnz pattern
-                    {
-                        if (i > vk_2ndlastnz && i != n-1) { vk_2ndlastnz = i;}
-                        h_for_vk[i] = -1;
-                        vk->i[vk->nz] = i;
-                        vk->nz ++;
-                    }
-                }
-            }
-        }
-
         // update k
         if(ks != n)
         {
@@ -364,6 +343,6 @@ SPEX_info SPEX_LUU
     // update row/column permutation
     Q[n] = Q[n+1];
     
-    SPEX_FREE_WORK;
+    SPEX_FREE_ALL;
     return SPEX_OK;
 }

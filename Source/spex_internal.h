@@ -362,5 +362,17 @@ SPEX_info spex_cast_matrix
     ASSERT_KIND (A,required_kind) ;                     \
     ASSERT_TYPE (A,required_type) ;
 
+typedef struct
+{
+    int64_t n;    // number of entries
+    int64_t nz;   // number of nonzeros
+    int64_t nzmax;// size of array i, nz <= nzmax <= n
+    int64_t *i;   // array of size nzmax that contains the column/row indices
+                  // of nnz
+    //bool i_shallow;// if true, i is shallow, and original i should be updated
+                  // when this struct is free'd
+    mpz_t *x;     // array of size n that contains the values of each entry
+} spex_scattered_vector;
+
 #endif
 

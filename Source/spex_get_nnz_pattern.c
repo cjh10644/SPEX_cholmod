@@ -1,6 +1,6 @@
 //------------------------------------------------------------------------------
-// SPEX_CHOLMOD/spex_get_nnz_pattern.c: get the row-wise or column-wise nonzero
-// pattern as specified.
+// SPEX_CHOLMOD/spex_get_nnz_pattern.c: get the row-wise nonzero pattern of L
+// and column-wise nonzero pattern of U.
 //------------------------------------------------------------------------------
 
 // SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
@@ -10,98 +10,115 @@
 //------------------------------------------------------------------------------
 
 // Purpose: This function finds the column-wise nonzero pattern from a
-// compressed-row matrix or the row-wise nonzero pattern from a
-// compressed-column matrix.
+// compressed-row matrix U, and the column index of last off-diagonal entry in
+// each row and the pointer to each diagonal entry of a compressed-column
+// matrix L. 
+
+#define SPEXX_FREE_ALL                      \
+    SPEX_FREE(&rowcount);                   \
+    SPEX_FREE(&Ldiag_new);                  \
+    SPEX_FREE(&Lr_offdiag_new);             \
+    SPEX_FREE(&Ucp_new);                    \
+    SPEX_FREE(&Uci_new);                    \
+    SPEX_FREE(&Ucx_new);
 
 #define SPEX_FREE_WORK                      \
-    SPEX_FREE(&cp);                         \
     SPEX_FREE(&rowcount);
 
 #include "spex_internal.h"
 
-SPEX_info spex_get_nnz_pattern    // find the specified nnz pattern 
+SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
 (
-    // OUTPUT:                    // should be allocated upon function call
-    int64_t *Cj,                  // the col index for row-wise nnz pattern,
-                                  // or the row index otherwise.
-    int64_t *Cp,                  // row pointers for row-wise pattern or col
-                                  // pointer otherwise
-    int64_t *Cx,
+    // OUTPUT:
+    int64_t **Ldiag,              // L(k,k) can be found asL->v[k]->x[Ldiag[k]]
+    int64_t **Lr_offdiag,         // Lr_offdiag[k] gives the column index of the
+                                  // last off-diagonal nnz in k-th row of L.
+                                  // -1 if no off diagonal entry
+    int64_t **Uci,                // the row index for col-wise nnz pattern of U
+    int64_t **Ucp,                // col pointers for col-wise pattern of U
+    int64_t **Ucx,                // find the value of k-th entry as
+                                  // U->v[Uci[k]]->x[Ucx[k]]
     // INPUT:
-    bool get_col_nnz,             // if true, get the col-wise nnz pattern
-    const SPEX_matrix *L,         // the target matrix
-    const SPEX_matrix *U,         // the target matrix
-    const SPEX_option             // command option
+    const SPEX_matrix *L,         // the target matrix L
+    const SPEX_matrix *U,         // the target matrix U
+    const SPEX_option *option     // command option
 )
 {
+    // inputs are checked in SPEX_LUU
     SPEX_info info;
-    if (!spex_initialized ( )) return (SLIP_PANIC) ;
-
-    if (!U->i || !U->p || !Cj || !Cp || !Cx)
-    {
-        return SPEX_INCORRECT_INPUT;
-    }
-
+    int64_t *Ldiag_new = NULL, *Lr_offdiag_new = NULL, *Ucp_new = NULL,
+            *Uci_new = NULL, *Ucx_new = NULL, *rowcount;
+    int64_t i, j, p;
     int64_t  n  = U->n;
-    int64_t Unz = U->nz;
-    int64_t *Ui = U->i;
-    int64_t *Up = U->p;
 
-    int64_t *rowcount = SPEX_calloc(n, sizeof(int64_t));
-    int64_t *cp       = SPEX_calloc(n, sizeof(int64_t));
-    if (!rowcount || !cp)
+    rowcount       = (int64_t*) SPEX_calloc( n,   sizeof(int64_t));
+    Ldiag_new      = (int64_t*) SPEX_malloc( n   *sizeof(int64_t));
+    Lr_offdiag_new = (int64_t*) SPEX_malloc( n   *sizeof(int64_t));
+    Ucp_new        = (int64_t*) SPEX_malloc((n+1)*sizeof(int64_t));
+    if (!rowcount || !Ldiag_new || !Lr_offdiag_new || !Ucp_new)
     {
-        SPEX_FREE_WORK;
+        SPEX_FREE_ALL;
         return SPEX_OUT_OF_MEMORY;
     }
 
-    for (int i = 0 ; i < n ; i++)
+    for (i = 0 ; i < n ; i++)
     {
-        L_row_offdiag[i] = -1;
+        Lr_offdiag_new[i] = -1;
     }
-    for (int64_t j = 0; j < n; j++)
+    for (j = 0; j < n; j++)
     {
-        for (int64_t ap = 0; ap < L->v[j]->nz; ap++)
+        for (p = 0; p < L->v[j]->nz; p++)
         {
             // row index
-            ci = L->v[j]->i[ap];
+            i = L->v[j]->i[p];
 
-            if (ci == P[j])  // current entry is diagonal of L(P,:)
+            if (i == P[j])  // current entry is diagonal of L(P,:)
             {
-                Ldiag[j] = ap; // get the row pointer
+                Ldiag_new[j] = p; // get the row pointer
             }
             else            // get the last row-wise off-diagonal entries
             {
-                // TODO check L->v[j]->x?
-                L_row_offdiag[ci] = j; // get the column index
+                Lr_offdiag_new[i] = j; // get the column index
             }
         }
     }
 
-    for (int ap = 0 ; ap < Unz ; ap++)
+    for (i = 0; i < n; i++)
     {
-        rowcount [Ui [ap]]++ ;
-    }
+        for (p = 0 ; p < U->v[i]->nz; p++)
+        {
+            j = U->v[i]->i[p];
+            rowcount [j]++ ;
+        }
 
     // compute cumulative sum of rowcount to get the row pointer
-    spex_cumsum(rowcount, Cp);
+    spex_cumsum(rowcount, Ucp_new);
 
-    for (int i = 0 ; i < n ; i++)
+    int64_t U_nnz = Ucp_new[n];
+    Uci_new = (int64_t*) SPEX_malloc(U_nnz*sizeof(int64_t));
+    Ucx_new = (int64_t*) SPEX_malloc(U_nnz*sizeof(int64_t));
+    if (!Uci_new || !Ucx_new)
     {
-        cp[i] = Cp[i]; // row pointer for row i
+        SPEX_FREE_ALL;
+        return SPEX_OUT_OF_MEMORY;
     }
-    for (int j = 0 ; j < n ; i++)
+
+    for (i = 0 ; i < n ; i++)
     {
-        for (int ap = Up[j] ; ap < Up[j+1] ; ap++)
+        for (p = 0 ; p < U->v[i]->nz ; p++)
        {
-            // TODO check U->v[j]->x?
-            i = Ui[ap];
-            Cj[ cp[i] ] = j ;
-            Cx[ cp[i] ] = ap ;
-            cp[i] ++;
+            j = U->v[i]->i[p];
+            Uci_new[ rowcount[j] ] = i ;
+            Ucx_new[ rowcount[j] ] = p ;
+            rowcount[j] ++;
         }
     }
 
+    *Ldiag = Ldiag_new;
+    *Lr_offdiag = Lr_offdiag_new;
+    *Ucp = Ucp_new;
+    *Uci = Uci_new;
+    *Ucx = Ucx_new;
     SPEX_FREE_WORK;
     return SPEX_OK;
 }

@@ -180,6 +180,7 @@ SPEX_info spex_dppu2
 
         // update Ldiag[k] = Ldiag[ks], no need to update Ldiag[ks] or Udiag
         Ldiag[k] = Ldiag[ks];
+        //Udiag[k] = Udiag[ks];//TODO we need this
 
         //----------------------------------------------------------------------
         // update entries in frames between k and ks
@@ -234,10 +235,10 @@ SPEX_info spex_dppu2
     }
     for (int64_t j = k; j < ks; j++)
     {
-        // skip if U(ks, Q[j]) == 0
         if (using_col_n && j == k)
         {
-            SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk[P[n-1]]));
+            // TODO handle the scale factor
+            SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk[P[ks]]));// this was vk[P[k]]
             if (sgn == 0) { continue; }
 
             // only need to perform IPGE for U(ks, Q(ks)) since there is only
@@ -262,6 +263,7 @@ SPEX_info spex_dppu2
         {
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, Uk_dense_row[Q[j]]));
         }
+        // skip if U(ks, Q[j]) == 0
         if (sgn == 0) { continue; }
 
         // perform j-th IPGE update for U(ks,:)
@@ -345,6 +347,7 @@ SPEX_info spex_dppu2
         pks = 0;
         while (pks < U->v[ks]->nz)
         {
+            // TODO find inext here
             // column index in row ks of U
             cks = U->v[ks]->i[pks];
             h[cks] = SPEX_FLIP(h[cks]);

@@ -49,8 +49,7 @@ SPEX_info spex_cppu
     int sgn;
     int64_t pk, ck, pks, cks;
     // the pointer for U(k,Q(ks)) = U->v[k]->x[Ucx[Ucp_k_ks]]
-    // initialized to be 2nd last entry in the Q[ks]-th col of U
-    int64_t Ucp_k_ks = Ucp[Q[ks]+1]-2;
+    int64_t Ucp_k_ks;
     int64_t *h;  // history vector
 
     mpq_t pending_scale, tmp_mpq;
@@ -76,19 +75,18 @@ SPEX_info spex_cppu
         // column n-1. Then we set sd[k] to vk_dense[P[k]] with history update
         // and pending scaling factor applied
         SPEX_CHECK(SPEX_mpz_swap(Uk_dense_row[Q[k]], sd[k]));
+        // apply history update to vk_dense[P[k]] if needed
         real_h = SPEX_FLIP(h_for_vk[P[k]]);
         if (real_h < k-1)
         {
-            SPEX_CHECK(SPEX_mpz_mul(sd[k], vk_dense[P[k]], sd[k-1]));
+            SPEX_CHECK(SPEX_mpz_mul(vk_dense[P[k]], vk_dense[P[k]], sd[k-1]));
             if (real_h > -1)
             {
-                SPEX_CHECK(SPEX_mpz_divexact(sd[k], sd[k], sd[real_h]));
+                SPEX_CHECK(SPEX_mpz_divexact(vk_dense[P[k]],
+                                             vk_dense[P[k]], sd[real_h]));
             }
         }
-        else
-        {
-            SPEX_CHECK(SPEX_mpz_set(sd[k], vk_dense[P[k]]));
-        }
+        SPEX_CHECK(SPEX_mpz_set(sd[k], vk_dense[P[k]]));
         SPEX_CHECK(SPEX_mpz_divexact(sd[k], sd[k], SPEX_MPQ_DEN(vk_scale)));
         SPEX_CHECK(SPEX_mpz_mul     (sd[k], sd[k], SPEX_MPQ_NUM(vk_scale)));
 
@@ -118,6 +116,30 @@ SPEX_info spex_cppu
                                         sd[j], SPEX_MPQ_DEN(pending_scale)));
                 SPEX_CHECK(SPEX_mpz_mul(sd[j],
                                         sd[j], SPEX_MPQ_NUM(pending_scale)));
+            }
+
+            // perform history update for entries in vk that will be in L
+            for (pk = 0; pk < vk->nz; pk++)
+            {
+                ck = vk->i[pk];
+                if (P_inv[ck] <= k) { continue; }
+
+                // L(ck,k) = (L(ck, k)*vk(P[k])-L(P[k],k)*vk(ck))/sd[k-1]
+                SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense[ck]));
+                if (sgn != 0)
+                {
+                    real_h = SPEX_FLIP(h_for_vk[ck]);
+                    if (real_h < k-1)
+                    {
+                        SPEX_CHECK(SPEX_mpz_mul(vk_dense[ck],
+                                                vk_dense[ck], sd[k-1]));
+                        if (real_h > -1)
+                        {
+                            SPEX_CHECK(SPEX_mpz_divexact(vk_dense[ck],
+                                                vk_dense[ck], sd[real_h]));
+                        }
+                    }
+                }
             }
         }
         else
@@ -151,10 +173,23 @@ SPEX_info spex_cppu
                 ck = vk->i[pk];
                 if (P_inv[ck] <= k) { continue; }
 
-                // L(ck,k) = (L(ck, k)*vk(P[k])-L(P[k],k)*vk(ck))/sd[k-1]
                 SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense[ck]));
                 if (sgn != 0)
                 {
+                    // apply history update to vk[ck]
+                    real_h = SPEX_FLIP(h_for_vk[ck]);
+                    if (real_h < k-1)
+                    {
+                        SPEX_CHECK(SPEX_mpz_mul(vk_dense[ck],
+                                                vk_dense[ck], sd[k-1]));
+                        if (real_h > -1)
+                        {
+                            SPEX_CHECK(SPEX_mpz_divexact(vk_dense[ck],
+                                                vk_dense[ck], sd[real_h]));
+                        }
+                    }
+
+                    // L(ck,k) = (L(ck, k)*vk(P[k])-L(P[k],k)*vk(ck))/sd[k-1]
                     SPEX_CHECK(SPEX_mpz_sgn(&sgn, Lk_dense_col[ck]));
                     if (sgn != 0)
                     {
@@ -333,6 +368,8 @@ SPEX_info spex_cppu
     // column of scaled L and scaled U(k:ks-1,Q(ks)). Backtracking will be
     // performed on Lk_dense_col for each nonzero in U(k:ks-1, Q(ks)).
     //-------------------------------------------------------------------------
+    // initialized to be 2nd last entry in the Q[ks]-th col of U
+    Ucp_k_ks = Ucp[Q[ks]+1]-2;
     if (Unj[Ucp_k_ks] == k) // 2nd last nnz in U(:,Q(ks)) is at row k
     {
         // . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 

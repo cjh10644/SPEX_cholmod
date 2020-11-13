@@ -17,23 +17,26 @@
 
 SPEX_info spex_find_next_nz
 (
-    int64_t *next,
-    SPEX_matrix *A,
-    SPEX_vector *Ak_dense,
-    int64_t *perm_inv
+    int64_t *next,                  // the col/row index of next nnz
+    SPEX_scattered_vector *Ak_dense,// the scattered vector
+    int64_t *perm_inv,              // inverse of permutation
     int64_t k
 )
 {
     SPEX_info info;
-    inext = n;
-    for (p = 0; p < A->v[k]->nz; p++)
+    int sgn;
+    int64_t p, i;
+    *next = Ak_dense->n;
+
+    for (p = 0; p < Ak_dense->nz; p++)
     {
-        i = A->v[k]->i[p];
+        i = Ak_dense->i[p];
         if (k == perm_inv[i]) { continue; }
-        SPEX_CHECK(SPEX_mpz_sgn(&sgn, Ak_dense[i]));
-        if (sgn != 0 && perm_inv[i] < inext)
+
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, Ak_dense->x[i]));
+        if (sgn != 0 && perm_inv[i] < *next)
         {
-            inext = i;
+            *next = i;
         }
     }
     return SPEX_OK;
