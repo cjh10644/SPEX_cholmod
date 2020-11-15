@@ -23,6 +23,7 @@ SPEX_info spex_get_scattered_v
     spex_scattered_vector *sv,   // output vector in scattered form
     const spex_vector *v,        // the vector in compressed form, whose
                                  // max index is n
+    const int64_t n,             // number of entries in v
     const bool eliminate_zero,   // indicate if explicit zero should be elimated
     const bool keep_v            // indicate if the mpz values should be kept
 )
@@ -32,7 +33,7 @@ SPEX_info spex_get_scattered_v
         return SPEX_INCORRECT_INPUT;
     }
 
-    sv = spex_create_scattered_vector(n, v->nzmax);
+    sv = spex_create_scattered_vector(n);
     if (!sv)
     {
         return SPEX_OUT_OF_MEMORY;
@@ -79,17 +80,17 @@ SPEX_info spex_get_scattered_v
         p = 0;
         while (p < v->nz)
         {
-            i = v->i[p];
-            SPEX_CHECK(SPEX_mpz_sgn(&sgn, v->x[i]));
+            SPEX_CHECK(SPEX_mpz_sgn(&sgn, v->x[p]));
             if (sgn != 0)
             {
+                i = v->i[p];
                 if (keep_v)
                 {
-                    SPEX_CHECK(SPEX_mpz_set(sv->x[i], v->x[i]));
+                    SPEX_CHECK(SPEX_mpz_set(sv->x[i], v->x[p]));
                 }
                 else
                 {
-                    SPEX_CHECK(SPEX_mpz_swap(sv->x[i], v->x[i]));
+                    SPEX_CHECK(SPEX_mpz_swap(sv->x[i], v->x[p]));
                 }
                 sv->i[p] = v->i[p];
                 p++;
@@ -97,6 +98,7 @@ SPEX_info spex_get_scattered_v
             else
             {
                 v->nz--;
+                SPEX_CHECK(SPEX_mpz_swap(v->x[p], v->x[v->nz]));
                 v->i[p] = v->i[v->nz];
             }
         }
@@ -106,16 +108,18 @@ SPEX_info spex_get_scattered_v
     {
         for (p = 0; p < v->nz; p++)
         {
+            i = v->i[p];
             if (keep_v)
             {
-                SPEX_CHECK(SPEX_mpz_set(sv->x[i], v->x[i]));
+                SPEX_CHECK(SPEX_mpz_set(sv->x[i], v->x[p]));
             }
             else
             {
-                SPEX_CHECK(SPEX_mpz_swap(sv->x[i], v->x[i]));
+                SPEX_CHECK(SPEX_mpz_swap(sv->x[i], v->x[p]));
             }
-            i = v->i[p];
+            sv->i[p] = v->i[p];
         }
+        sv->nz = v->nz;
     }
     return SPEX_OK;
 }

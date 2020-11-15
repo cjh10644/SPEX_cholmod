@@ -18,6 +18,9 @@
 // of U and j-th frame of the frame matrix). Since vi has no pending scale
 // factor and v1 has pending scale factor, we will find a new common factor for
 // vi and v1, and properly scale v1 and vi before insert vi into v1.
+//
+// NOTE: the value of vi is inserted by swapping with corresponding mpz_t value
+// in v1, which should be considered as undefined after this function.
 
 #include "spex_internal.h"
 
@@ -26,7 +29,7 @@ SPEX_info spex_insert_new_entry
     mpz_t vi,          // the entry to be inserted as i-th entry of v1
     SPEX_vector **v1,  // the vector that would add new entry
     mpq_t S1,          // pending scale for v1
-    const SPEX_vector *v2,// another vector that is in same frame as v1
+    const SPEX_vector *v2,// the other vector that is in same frame as v1
     mpq_t S2,          // pending scale for v2
     mpq_t S3,          // pending scale for frame that holds v1 and v2
     mpz_t d,           // the unscale pivot in frame of v1 and v2
@@ -50,8 +53,7 @@ SPEX_info spex_insert_new_entry
         // factor for frame i
         SPEX_CHECK(SPEX_mpz_gcd(gcd, vi, SPEX_MPQ_NUM(S3)));
         SPEX_CHECK(SPEX_mpz_divexact(vi, vi, gcd));
-        SPEX_CHECK(SPEX_mpz_divexact(SPEX_MPQ_NUM(S3),
-                                     SPEX_MPQ_NUM(S3), gcd));
+        SPEX_CHECK(SPEX_mpz_divexact(SPEX_MPQ_NUM(S3), SPEX_MPQ_NUM(S3), gcd));
 #endif
         // [S1;S2;S3] = [S1*S3; S2*S3; 1]
         SPEX_CHECK(SPEX_mpq_mul(S1, S1, S3));
@@ -70,8 +72,7 @@ SPEX_info spex_insert_new_entry
         // find the gcd of inserted entry and numerator of S1
         SPEX_CHECK(SPEX_mpz_gcd(gcd, vi, SPEX_MPQ_NUM(S1)));
         SPEX_CHECK(SPEX_mpz_divexact(vi, vi, gcd));
-        SPEX_CHECK(SPEX_mpz_divexact(SPEX_MPQ_NUM(S1),
-                                     SPEX_MPQ_NUM(S1), gcd));
+        SPEX_CHECK(SPEX_mpz_divexact(SPEX_MPQ_NUM(S1), SPEX_MPQ_NUM(S1), gcd));
 #endif
         for (p = 0; p < *v1->nz; p++)
         {
@@ -80,8 +81,7 @@ SPEX_info spex_insert_new_entry
             // division will preserve integer propety
             SPEX_CHECK(SPEX_mpz_divexact(*v1->x[p], *v1->x[p],
                                        SPEX_MPQ_DEN(S1)));
-            SPEX_CHECK(SPEX_mpz_mul(*v1->x[p], *v1->x[p],
-                                       SPEX_MPQ_NUM(S1)));
+            SPEX_CHECK(SPEX_mpz_mul(*v1->x[p], *v1->x[p], SPEX_MPQ_NUM(S1)));
         }
 #if 0
         SPEX_CHECK(SPEX_mpq_set_z(S1, gcd));
@@ -90,20 +90,13 @@ SPEX_info spex_insert_new_entry
 #endif
     }
     // append vi to v1
-    if (*v1->nz == *v1->max_nnz)
+    if (*v1->nz == *v1->nzmax)
     {
         // reallocate the nonzero pattern if needed
-        SPEX_CHECK(spex_expand(v1));//TODO
+        SPEX_CHECK(spex_expand_vector(v1, 2*(*v1->nzmax));
     }
     *v1->i[*v1->nz] = i;
-    if (Is_diag) // diagonal entry
-    {
-        SPEX_CHECK(SPEX_mpz_set(*v1->x[*v1->nz], vi));
-    }
-    else
-    {
-        SPEX_CHECK(SPEX_mpz_swap(*v1->x[*v1->nz], vi));
-    }
+    SPEX_CHECK(SPEX_mpz_swap(*v1->x[*v1->nz], vi));
     *v1->nz ++;
 
     return SPEX_OK;

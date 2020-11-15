@@ -366,7 +366,6 @@ typedef struct
 {
     int64_t n;    // number of entries
     int64_t nz;   // number of nonzeros
-    int64_t nzmax;// size of array i, nz <= nzmax <= n
     int64_t *i;   // array of size nzmax that contains the column/row indices
                   // of nnz
     //bool i_shallow;// if true, i is shallow, and original i should be updated

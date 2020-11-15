@@ -1,5 +1,6 @@
 //------------------------------------------------------------------------------
-// SPEX_CHOLMOD/spex_expand_vector: double the space for a SPEX_vector object
+// SPEX_CHOLMOD/spex_expand_vector: expand the space for a SPEX_vector object to
+// given new size.
 //------------------------------------------------------------------------------
 
 // SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
@@ -8,9 +9,8 @@
 
 //------------------------------------------------------------------------------
 
-/* Purpose: This function expands a SPEX_vector by doubling its size. It will
- * initialize/allocate for the mpz entries if INIT_MPZ is true. Otherwise, this
- * aversion merely expands x and i and does not initialize/allocate the values!
+/* Purpose: This function expands a SPEX_vector to given size. It will
+ * initialize/allocate for the mpz entries.
  */
 
 #include "spex_internal.h"
@@ -18,42 +18,39 @@
 SPEX_info spex_expand_vector
 (
     SPEX_vector* v, // the vector to be expanded
-    bool INIT_MPZ   // indicate if the mpz entries should be initialized
+    const int64_t new_size// desired new size for v
 )
 {
     //--------------------------------------------------------------------------
-    // double the size of v->x and v->i
+    // expand the size of v->x and v->i to new_size
     //--------------------------------------------------------------------------
     SPEX_info info;
-    int64_t nzmax = v->nzmax ;
+    int64_t old_size = v->nzmax ;
 
     bool okx, oki ;
     v->x = (mpz_t *)
-        SPEX_realloc (2*nzmax, nzmax, sizeof (mpz_t), v->x, &okx) ;
+        SPEX_realloc (new_size, old_size, sizeof (mpz_t), v->x, &okx) ;
     v->i = (int64_t *)
-        SLIP_realloc (2*nzmax, nzmax, sizeof (int64_t), v->i, &oki) ;
+        SLIP_realloc (new_size, old_size, sizeof (int64_t), v->i, &oki) ;
     if (!oki || !okx)
     {
         return (SLIP_OUT_OF_MEMORY) ;
     }
 
-    v->nzmax = 2*nzmax ;
+    v->nzmax = new_size ;
 
     //--------------------------------------------------------------------------
     // set newly allocated mpz entries to NULL and initialize if required
     //--------------------------------------------------------------------------
 
-    for (int64_t p = nzmax ; p < 2*nzmax ; p++)
+    for (int64_t p = old_size ; p < new_size ; p++)
     {
         SPEX_MPZ_SET_NULL (v->x[p]) ;
     }
 
-    if (INIT_MPZ)
+    for (int64_t p = old_size ; p < new_size ; p++)
     {
-        for (int64_t p = nzmax ; p < 2*nzmax ; p++)
-        {
-            SPEX_CHECK(SPEX_mpz_init (v->x[p])) ;
-        }
+        SPEX_CHECK(SPEX_mpz_init (v->x[p])) ;
     }
 
     return (SLIP_OK) ;

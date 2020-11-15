@@ -30,7 +30,7 @@
 SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
 (
     // OUTPUT:
-    int64_t **Ldiag,              // L(k,k) can be found asL->v[k]->x[Ldiag[k]]
+    int64_t **Ldiag,              // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     int64_t **Lr_offdiag,         // Lr_offdiag[k] gives the column index of the
                                   // last off-diagonal nnz in k-th row of L.
                                   // -1 if no off diagonal entry
@@ -41,6 +41,7 @@ SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
     // INPUT:
     const SPEX_matrix *L,         // the target matrix L
     const SPEX_matrix *U,         // the target matrix U
+    const int64_t *P,             // row permutation
     const SPEX_option *option     // command option
 )
 {
@@ -49,7 +50,7 @@ SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
     int64_t *Ldiag_new = NULL, *Lr_offdiag_new = NULL, *Ucp_new = NULL,
             *Uci_new = NULL, *Ucx_new = NULL, *rowcount;
     int64_t i, j, p;
-    int64_t  n  = U->n;
+    int64_t n = U->n;
 
     rowcount       = (int64_t*) SPEX_calloc( n,   sizeof(int64_t));
     Ldiag_new      = (int64_t*) SPEX_malloc( n   *sizeof(int64_t));
