@@ -26,10 +26,10 @@ SPEX_info spex_finalize_and_insert_vk
     int64_t *h,       // history vector for vk_dense
     SPEX_matrix *U,   // matrix U
     SPEX_matrix *L,   // matrix L
-    mpq_t *S          // array of size 3*n that stores pending scales
-    int64_t *d,       // array of unscaled pivots
+    mpq_t *S,         // array of size 3*n that stores pending scales
+    mpz_t *d,         // array of unscaled pivots
     const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
-    const int64_t *sd,// array of scaled pivots
+    const mpz_t *sd,  // array of scaled pivots
     const int64_t *Q, // the column permutation
     const int64_t *P_inv,// inverse of row permutation
     const int64_t k,  // the column index in L that vk_dense will be inserted
@@ -38,7 +38,7 @@ SPEX_info spex_finalize_and_insert_vk
 )
 {
     SPEX_info info;
-    int64_t i, p = 0, vk_nz = vk_dense->nz;
+    int64_t i, p = 0, vk_nz = vk_dense->nz, n = U->n;
 
     // move entries to U
     while(p < vk_nz)
@@ -46,7 +46,7 @@ SPEX_info spex_finalize_and_insert_vk
         i = vk_dense->i[p];
         if (P_inv[i] < k)
         {
-            SPEX_CHECK(spex_insert_new_entry(vk_dense->x[i], &(U->v[i]),
+            SPEX_CHECK(spex_insert_new_entry(vk_dense->x[i], U->v[i],
                 SPEX_2D(S, 2, i), L->v[i], SPEX_2D(S, 1, i), SPEX_2D(S, 3, i),
                 d[i], Q[k], Ldiag[i], one));
             vk_nz--;
@@ -61,7 +61,7 @@ SPEX_info spex_finalize_and_insert_vk
     // check if L->v[k] needs more space for all remaining entries
     if (vk_nz > L->v[k]->nzmax)
     {
-        SPEX_CHECK(spex_expand_vector(&(L->v[k]), vk_nz));
+        SPEX_CHECK(spex_expand_vector(L->v[k], vk_nz));
     }
 
     // move the remaining entries to L->v[k]

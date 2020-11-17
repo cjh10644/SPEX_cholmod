@@ -46,7 +46,8 @@
 
 
 #define SPEX_FREE_ALL                \
-    SPEX_MPQ_CLEAR(pending_scale);
+    SPEX_MPQ_CLEAR(pending_scale);   \
+    SPEX_MPZ_CLEAR(tmpz);
 
 #include "spex_internal.h"
 
@@ -77,8 +78,10 @@ SPEX_info spex_ipge // perform IPGE on x based on v
     }
     int64_t p, i, real_hj, real_hi;
     int sgn;
-    mpq_t pending_scale; SPEX_MPQ_SET_NULL(pending_scale);
+    mpq_t pending_scale; SPEX_MPQ_SET_NULL(pending_scale);// TODO make input
+    mpz_t tmpz; SPEX_MPZ_SET_NULL(tmpz);
     SPEX_CHECK(SPEX_mpq_init(pending_scale));
+    SPEX_CHECK(SPEX_mpz_init(tmpz));
 
     // pending_scale = x[perm[j]]/sd[h[perm[j]]]
     real_hj = SPEX_FLIP(h[perm[j]]);
@@ -123,27 +126,28 @@ SPEX_info spex_ipge // perform IPGE on x based on v
             sv_x->nz ++;
 
             // update prev if needed
-            if (prev && perm_inv[i] > *prev && perm_inv[i] != n-1)
+            if (prev && perm_inv[i] > *prev && perm_inv[i] != sv_x->n-1)
             {
                 *prev = perm_inv[i];
             }
         }
         if (real_hi != real_hj)
         {
-            // tmp_mpz = floor(v(i)*pending_scale)
-            SPEX_CHECK(SPEX_mpz_mul(tmp_mpz, v->x[p],
+            // tmpz = floor(v(i)*pending_scale)
+            SPEX_CHECK(SPEX_mpz_mul(tmpz, v->x[p],
                                     SPEX_MPQ_NUM(pending_scale)));
-            SPEX_CHECK(SPEX_mpz_fdiv_q(tmp_mpz, tmp_mpz,
+            SPEX_CHECK(SPEX_mpz_fdiv_q(tmpz, tmpz,
                                     SPEX_MPQ_DEN(pending_scale)));
-            // x[i] = x[i]- tmp_mpz
-            SPEX_CHECK(SPEX_mpz_sub(sv_x->x[i], sv_x->x[i], tmp_mpz));
+            // x[i] = x[i]- tmpz
+            SPEX_CHECK(SPEX_mpz_sub(sv_x->x[i], sv_x->x[i], tmpz));
         }
         else
         {
             SPEX_CHECK(SPEX_mpz_addmul(sv_x->x[i], v->x[p], sv_x->x[perm[j]]));
             if (real_hi > -1)
             {
-                SPEX_CHECK(SPEX_divexact(sv_x->x[i], sv_x->x[i], sd[real_hi]));
+                SPEX_CHECK(SPEX_mpz_divexact(sv_x->x[i],
+                                             sv_x->x[i], sd[real_hi]));
             }
         }
 

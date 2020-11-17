@@ -3,7 +3,8 @@
 		#include <time.h>
 void main()
 {
-    mpz_t a, b, c, r, a_copy;
+    mpz_t a, b, c, r, a_copy, a1;
+    mpq_t q, q1;
     mpz_init(a);
     mpz_init(b);
     mpz_init(c);
@@ -27,7 +28,38 @@ void main()
     mpz_cdiv_qr(c,r,a,b);
     gmp_printf("c=a/b=%Zd/%Zd=%Zd...%Zd\n",a,b,c,r);
 
-    int t[10]= {1,2,3,3,5,7,8,9,3,7};
+    a1->_mp_d = NULL;
+    a1->_mp_size = 0;
+    a1->_mp_alloc = 0;
+    gmp_printf("before swap %Zd\n",a1);
+    mpz_swap(a,a1);
+    gmp_printf("after swap %Zd %p\n",a1,a1->_mp_d);
+    gmp_printf("after swap %Zd %p\n",a,a->_mp_d);
+    //mpz_set_si(a,5);
+    //gmp_printf("set a = 5 and get a=%Zd\n",a);
+
+    mpq_init(q);
+    mpq_set_si(q,2, 3);
+    mpq_get_num(a,q);
+    mpq_get_den(b,q);
+    gmp_printf("%Zd/%Zd %Zd/%Zd\n",mpq_numref(q),mpq_denref(q),a,b);
+    mpq_set_num(q,a);
+    mpq_set_den(q,c);
+    gmp_printf("%Zd/%Zd %Zd/%Zd\n",mpq_numref(q),mpq_denref(q),a,b);
+    mpq_canonicalize(q);
+    mpq_get_num(a,q);
+    mpq_get_den(b,q);
+    gmp_printf("%Zd/%Zd %Zd/%Zd\n",mpq_numref(q),mpq_denref(q),a,b);
+    mpq_set_si(q,-2, -3);
+    mpq_get_num(a,q);
+    mpq_get_den(b,q);
+    gmp_printf("%Zd/%Zd %Zd/%Zd\n",mpq_numref(q),mpq_denref(q),a,b);
+    mpq_set_si(q,-2, 3);
+    mpq_get_num(a,q);
+    mpq_get_den(b,q);
+    gmp_printf("%Zd/%Zd %Zd/%Zd\n",mpq_numref(q),mpq_denref(q),a,b);
+
+ /*   int t[10]= {1,2,3,3,5,7,8,9,3,7};
     int tt[10]={2,4,1,3,1,6,3,6,5,8};
     int max = 10;
     int i;
@@ -82,5 +114,5 @@ void main()
 		end = clock();
 		t_divex += ((double) (end - start)) / CLOCKS_PER_SEC;
 	}
-	printf("time for fdiv: %f, cdiv:%f, tdiv:%f, divex:%f\n",t_fdiv, t_cdiv, t_tdiv, t_divex);
+	printf("time for fdiv: %f, cdiv:%f, tdiv:%f, divex:%f\n",t_fdiv, t_cdiv, t_tdiv, t_divex);*/
 }

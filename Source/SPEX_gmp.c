@@ -754,6 +754,24 @@ SPEX_info SPEX_mpz_get_si
 }
 
 //------------------------------------------------------------------------------
+// SPEX_mpz_swap
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely swap the values x and y efficiently */
+
+SPEX_info SPEX_mpz_swap
+(
+    mpz_t x,
+    mpz_t y
+)
+{
+    SPEX_GMP_WRAPPER_START ;
+    mpz_swap (x, y) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
 // SPEX_mpz_set_q
 //------------------------------------------------------------------------------
 
@@ -791,13 +809,29 @@ SPEX_info SPEX_mpz_mul
 }
 
 //------------------------------------------------------------------------------
+// SPEX_mpz_sub
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely compute a = b-c */
+
+SPEX_info SPEX_mpz_sub
+(
+    mpz_t a,
+    const mpz_t b,
+    const mpz_t c
+)
+{
+    SPEX_GMPZ_WRAPPER_START (a) ;
+    mpz_sub (a,b,c) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
 // SPEX_mpz_add
 //------------------------------------------------------------------------------
 
 /* Purpose: Safely compute a = b+c */
-
-#if 0
-/* This function is currently unused, but kept here for future reference. */
 
 SPEX_info SPEX_mpz_add
 (
@@ -811,7 +845,6 @@ SPEX_info SPEX_mpz_add
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
-#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_addmul
@@ -820,7 +853,6 @@ SPEX_info SPEX_mpz_add
 /* Purpose: Safely set an mpz number += product of two mpz numbers,
  * i.e., x = x + y*z */
 
-#if 0
 /* This function is currently unused, but kept here for future reference. */
 SPEX_info SPEX_mpz_addmul
 (
@@ -834,7 +866,6 @@ SPEX_info SPEX_mpz_addmul
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
-#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_submul
@@ -853,6 +884,52 @@ SPEX_info SPEX_mpz_submul
 {
     SPEX_GMPZ_WRAPPER_START (x) ;
     mpz_submul (x, y, z) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
+// SPEX_mpz_fdiv_q
+//------------------------------------------------------------------------------
+
+/* Purpose: Safe version of dividing n by d, forming a quotient q and/or
+ * remainder r.
+ * fdiv rounds q down towards -infinity, and r will have the same sign as d.
+ * The f stands for “floor”. That is, q = floor(n/d)
+ */
+
+SPEX_info SPEX_mpz_fdiv_q
+(
+    mpz_t q,
+    const mpz_t n,
+    const mpz_t d
+)
+{
+    SPEX_GMPZ_WRAPPER_START (q) ;
+    mpz_divexact (q, n, d) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
+// SPEX_mpz_divexact
+//------------------------------------------------------------------------------
+
+/* Purpose: Safe version of dividing n by d, forming a quotient q and/or
+ * remainder r.
+ * cdiv rounds q up towards +infinity, and r will have the opposite sign to d.
+ * The c stands for “ceil”. That is, q = ceil(n/d)
+ */
+
+SPEX_info SPEX_mpz_cdiv_q
+(
+    mpz_t q,
+    const mpz_t n,
+    const mpz_t d
+)
+{
+    SPEX_GMPZ_WRAPPER_START (q) ;
+    mpz_divexact (q, n, d) ;
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
@@ -910,6 +987,24 @@ SPEX_info SPEX_mpz_lcm
 {
     SPEX_GMPZ_WRAPPER_START (lcm) ;
     mpz_lcm (lcm, x, y) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
+// SPEX_mpz_neg
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely set x = -y */
+
+SPEX_info SPEX_mpz_neg
+(
+    mpz_t x,
+    const mpz_t y
+)
+{
+    SPEX_GMPZ_WRAPPER_START (x) ;
+    mpz_neg (x, y) ;
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
@@ -1088,6 +1183,23 @@ SPEX_info SPEX_mpq_set_z
 }
 
 //------------------------------------------------------------------------------
+// SPEX_mpq_canonicalize
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely set an mpq number in canonical form */
+
+SPEX_info SPEX_mpq_canonicalize
+(
+    mpq_t x
+)
+{
+    SPEX_GMPQ_WRAPPER_START (x) ;
+    mpq_canonicalize (x) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
 // SPEX_mpq_set_d
 //------------------------------------------------------------------------------
 
@@ -1213,6 +1325,44 @@ SPEX_info SPEX_mpq_get_d
 {
     SPEX_GMP_WRAPPER_START ;
     *x = mpq_get_d (y) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
+// SPEX_mpq_swap
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely swap the values x and y efficiently */
+
+SPEX_info SPEX_mpq_swap
+(
+    mpq_t x,
+    mpq_t y
+)
+{
+    SPEX_GMP_WRAPPER_START ;
+    mpq_swap (x, y) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+
+
+//------------------------------------------------------------------------------
+// SPEX_mpq_neg
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely set an mpq number x = -y */
+
+SPEX_info SPEX_mpq_neg
+(
+    mpq_t x,
+    const mpq_t y
+)
+{
+    SPEX_GMPQ_WRAPPER_START (x) ;
+    mpq_neg (x, y) ;
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }

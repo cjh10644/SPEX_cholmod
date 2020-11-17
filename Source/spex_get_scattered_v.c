@@ -21,7 +21,7 @@
 SPEX_info spex_get_scattered_v
 (
     spex_scattered_vector *sv,   // output vector in scattered form
-    const spex_vector *v,        // the vector in compressed form, whose
+    SPEX_vector *v,              // the vector in compressed form, whose
                                  // max index is n
     const int64_t n,             // number of entries in v
     const bool eliminate_zero,   // indicate if explicit zero should be elimated

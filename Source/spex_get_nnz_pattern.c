@@ -14,16 +14,16 @@
 // each row and the pointer to each diagonal entry of a compressed-column
 // matrix L. 
 
-#define SPEXX_FREE_ALL                      \
-    SPEX_FREE(&rowcount);                   \
-    SPEX_FREE(&Ldiag_new);                  \
-    SPEX_FREE(&Lr_offdiag_new);             \
-    SPEX_FREE(&Ucp_new);                    \
-    SPEX_FREE(&Uci_new);                    \
-    SPEX_FREE(&Ucx_new);
+#define SPEXX_FREE_ALL                     \
+    SPEX_FREE(rowcount);                   \
+    SPEX_FREE(Ldiag_new);                  \
+    SPEX_FREE(Lr_offdiag_new);             \
+    SPEX_FREE(Ucp_new);                    \
+    SPEX_FREE(Uci_new);                    \
+    SPEX_FREE(Ucx_new);
 
-#define SPEX_FREE_WORK                      \
-    SPEX_FREE(&rowcount);
+#define SPEX_FREE_WORK                     \
+    SPEX_FREE(rowcount);
 
 #include "spex_internal.h"
 
@@ -42,13 +42,12 @@ SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
     const SPEX_matrix *L,         // the target matrix L
     const SPEX_matrix *U,         // the target matrix U
     const int64_t *P,             // row permutation
-    const SPEX_option *option     // command option
+    const SPEX_options *option    // command option
 )
 {
     // inputs are checked in SPEX_LUU
-    SPEX_info info;
     int64_t *Ldiag_new = NULL, *Lr_offdiag_new = NULL, *Ucp_new = NULL,
-            *Uci_new = NULL, *Ucx_new = NULL, *rowcount;
+            *Uci_new = NULL, *Ucx_new = NULL, *rowcount = NULL;
     int64_t i, j, p;
     int64_t n = U->n;
 
@@ -91,9 +90,10 @@ SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
             j = U->v[i]->i[p];
             rowcount [j]++ ;
         }
+    }
 
     // compute cumulative sum of rowcount to get the row pointer
-    spex_cumsum(rowcount, Ucp_new);
+    spex_cumsum(rowcount, Ucp_new, n);
 
     int64_t U_nnz = Ucp_new[n];
     Uci_new = (int64_t*) SPEX_malloc(U_nnz*sizeof(int64_t));

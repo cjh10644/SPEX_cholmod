@@ -16,7 +16,7 @@
 
 spex_scattered_vector* spex_create_scattered_vector
 (
-    const int64_t n,             // number of entries in v
+    const int64_t n             // number of entries in v
 )
 {
     if (n <= 0) { return NULL; }
@@ -37,7 +37,7 @@ spex_scattered_vector* spex_create_scattered_vector
     sv->i = (int64_t*) SPEX_malloc(n*sizeof(int64_t));
     if (!(sv->i))
     {
-        SPEX_delete_mpz_array(&(sv->x));
+        SPEX_delete_mpz_array(&(sv->x), n);
         return NULL;
     }
 

@@ -18,7 +18,7 @@
 SPEX_info spex_find_next_nz
 (
     int64_t *next,                  // the col/row index of next nnz
-    SPEX_scattered_vector *Ak_dense,// the scattered vector
+    spex_scattered_vector *Ak_dense,// the scattered vector
     int64_t *perm_inv,              // inverse of permutation
     int64_t k
 )

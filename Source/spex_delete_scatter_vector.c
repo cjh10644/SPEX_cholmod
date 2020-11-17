@@ -15,12 +15,12 @@
 
 void spex_delete_scattered_vector
 (
-    spex_scattered_vector **sv,  // scattered vector to be deleted
+    spex_scattered_vector **sv  // scattered vector to be deleted
 )
 {
-    if(sv == NULL | (*sv) == NULL) {return;}
-    SPEX_delete_mpz_array(&(*sv->x), *sv->n);
-    SPEX_FREE(*sv->i);
+    if(sv == NULL || (*sv) == NULL) {return;}
+    SPEX_delete_mpz_array(&((*sv)->x), (*sv)->n);
+    SPEX_FREE((*sv)->i);
     SPEX_FREE(*sv);
 }
 

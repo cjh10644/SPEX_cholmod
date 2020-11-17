@@ -1,0 +1,8 @@
+
+scale
+
+scattered vector shallow?
+
+combine find_next_nz and get_scattered_v?
+
+remove zero due to backtracking and IPGE

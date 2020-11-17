@@ -31,10 +31,10 @@ SPEX_info spex_expand_vector
     v->x = (mpz_t *)
         SPEX_realloc (new_size, old_size, sizeof (mpz_t), v->x, &okx) ;
     v->i = (int64_t *)
-        SLIP_realloc (new_size, old_size, sizeof (int64_t), v->i, &oki) ;
+        SPEX_realloc (new_size, old_size, sizeof (int64_t), v->i, &oki) ;
     if (!oki || !okx)
     {
-        return (SLIP_OUT_OF_MEMORY) ;
+        return (SPEX_OUT_OF_MEMORY) ;
     }
 
     v->nzmax = new_size ;
@@ -53,5 +53,5 @@ SPEX_info spex_expand_vector
         SPEX_CHECK(SPEX_mpz_init (v->x[p])) ;
     }
 
-    return (SLIP_OK) ;
+    return (SPEX_OK) ;
 }

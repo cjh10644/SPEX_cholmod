@@ -166,6 +166,26 @@ SPEX_options* SPEX_create_default_options (void) ;
 //------------------------------------------------------------------------------
 // SPEX_matrix: a sparse CSC, sparse triplet, or dense matrix
 //------------------------------------------------------------------------------
+typedef struct
+{
+    int64_t nz;   // number of nonzeros
+    int64_t nzmax;// size of array i and x, nz <= nzmax
+    int64_t *i;   // array of size nzmax that contains the column/row indices
+                  // of each nnz
+    mpz_t *x;     // array of size nzmax that contains the values of each nnz
+} SPEX_vector;
+typedef struct
+{
+    int64_t m ;   // number of entries in each vector
+    int64_t n ;   // number of vectors
+    SPEX_vector **v;// array of size n, each entry of this array is a column/row
+                  // vector.
+    mpq_t scale ; // scale factor//TODO
+} SPEX_matrix;
+/*
+//------------------------------------------------------------------------------
+// SPEX_matrix: a sparse CSC, sparse triplet, or dense matrix
+//------------------------------------------------------------------------------
 
 // SPEX_CHOLMOD uses a single matrix data type, SPEX_matrix, which can be held in
 // one of three kinds of formats:  sparse CSC (compressed sparse column),
@@ -355,7 +375,9 @@ SPEX_info SPEX_matrix_copy
 
 // To access the (i,j)th entry in a 2D SPEX_matrix, in any type:
 #define SPEX_2D(A,i,j,type) SPEX_1D (A, (i)+(j)*((A)->m), type)
-
+*/
+#define SPEX_1D(A,k) (A[k])
+#define SPEX_2D(A,i,j) SPEX_1D (A, (i)+(j)*(n))//TODO
 //------------------------------------------------------------------------------
 // Memory management
 //------------------------------------------------------------------------------
@@ -453,6 +475,22 @@ SPEX_info SPEX_finalize (void) ;
 // Primary factorization update routines
 //------------------------------------------------------------------------------
 
+SPEX_info SPEX_LUU
+(
+    SPEX_matrix *L,         // stored in compressed-column form
+    SPEX_matrix *U,         // stored in comptessed-row form
+    mpz_t *d,               // an array of size n that stores the unscaled pivot
+    mpz_t *sd,              // an array of size n that stores the scaled pivot
+    mpq_t *S,               // an array of size 3*n that stores pending scales
+    int64_t *P,             // row permutation
+    int64_t *P_inv,         // inverse of row permutation
+    int64_t *Q,             // column permutation
+    int64_t *Q_inv,         // inverse of column permutation
+    SPEX_vector *vk,        // the inserted column
+    bool keep_vk,           // indicate if the vector vk will be keep unchanged
+    int64_t k,              // the column index that vk will be inserted
+    const SPEX_options *option// command parameters
+);
 
 
 //------------------------------------------------------------------------------
@@ -489,21 +527,35 @@ SPEX_info SPEX_mpz_set_ui (mpz_t x, const uint64_t y) ;
 
 SPEX_info SPEX_mpz_set_si (mpz_t x, const int64_t y) ;
 
+SPEX_info SPEX_mpz_swap (mpz_t x, mpz_t y);
+
 SPEX_info SPEX_mpz_get_d (double *x, const mpz_t y) ;
 
 SPEX_info SPEX_mpz_get_si (int64_t *x, const mpz_t y) ;
 
 SPEX_info SPEX_mpz_set_q (mpz_t x, const mpq_t y) ;
 
+SPEX_info SPEX_mpz_sub (mpz_t a, const mpz_t b, const mpz_t c) ;
+
+SPEX_info SPEX_mpz_add (mpz_t a, const mpz_t b, const mpz_t c) ;
+
+SPEX_info SPEX_mpz_addmul (mpz_t x, const mpz_t y, const mpz_t z) ;
+
 SPEX_info SPEX_mpz_mul (mpz_t a, const mpz_t b, const mpz_t c) ;
 
 SPEX_info SPEX_mpz_submul (mpz_t x, const mpz_t y, const mpz_t z) ;
+
+SPEX_info SPEX_mpz_fdiv_q (mpz_t q, const mpz_t n, const mpz_t d) ;
+
+SPEX_info SPEX_mpz_cdiv_q (mpz_t q, const mpz_t n, const mpz_t d) ;
 
 SPEX_info SPEX_mpz_divexact (mpz_t x, const mpz_t y, const mpz_t z) ;
 
 SPEX_info SPEX_mpz_gcd (mpz_t x, const mpz_t y, const mpz_t z) ;
 
 SPEX_info SPEX_mpz_lcm (mpz_t lcm, const mpz_t x, const mpz_t y) ;
+
+SPEX_info SPEX_mpz_neg (mpz_t x, const mpz_t y) ;
 
 SPEX_info SPEX_mpz_abs (mpz_t x, const mpz_t y) ;
 
@@ -523,7 +575,11 @@ SPEX_info SPEX_mpq_set (mpq_t x, const mpq_t y) ;
 
 SPEX_info SPEX_mpq_set_z (mpq_t x, const mpz_t y) ;
 
+SPEX_info SPEX_mpq_canonicalize (mpq_t x);
+
 SPEX_info SPEX_mpq_set_d (mpq_t x, const double y) ;
+
+SPEX_info SPEX_mpq_swap (mpq_t x, mpq_t y);
 
 SPEX_info SPEX_mpq_set_ui (mpq_t x, const uint64_t y, const uint64_t z) ;
 
@@ -536,6 +592,8 @@ SPEX_info SPEX_mpq_set_den (mpq_t x, const mpz_t y) ;
 SPEX_info SPEX_mpq_get_den (mpz_t x, const mpq_t y) ;
 
 SPEX_info SPEX_mpq_get_d (double *x, const mpq_t y) ;
+
+SPEX_info SPEX_mpq_neg (mpq_t x, const mpq_t y) ;
 
 SPEX_info SPEX_mpq_abs (mpq_t x, const mpq_t y) ;
 
@@ -600,8 +658,6 @@ SPEX_info SPEX_mpfr_printf ( const char *format, ... ) ;
 SPEX_info SPEX_gmp_fprintf (FILE *fp, const char *format, ... ) ;
 SPEX_info SPEX_mpfr_fprintf (FILE *fp, const char *format, ... ) ;
 SPEX_info SPEX_mpz_set_d (mpz_t x, const double y) ;
-SPEX_info SPEX_mpz_add (mpz_t a, const mpz_t b, const mpz_t c) ;
-SPEX_info SPEX_mpz_addmul (mpz_t x, const mpz_t y, const mpz_t z) ;
 SPEX_info SPEX_mpfr_log2(mpfr_t x, const mpfr_t y, const mpfr_rnd_t rnd) ;
 #endif
 

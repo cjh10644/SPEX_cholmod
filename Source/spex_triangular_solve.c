@@ -32,6 +32,7 @@ SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
     const int64_t k,    // compute x up to k-th IPGE iteration, that is, using
                         // the first k-1 columns of L
     const SPEX_matrix *L,// matrix L
+    const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const mpq_t *S,     // the pending scale factor matrix
     const mpz_t *sd,    // array of scaled pivots
     const int64_t *P,   // row permutation
@@ -40,6 +41,7 @@ SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
 {
     SPEX_info info;
     int sgn;
+    int64_t n = sv_x->n;
     if (!sv_x || !h || !last_update || !L || !S || !P || !P_inv || !sd)
     {
         return SPEX_INCORRECT_INPUT;

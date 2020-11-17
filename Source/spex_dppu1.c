@@ -20,10 +20,10 @@
 // rows of L and columns of U are permuted implicitly via the permutation
 // matrices based on P and Q.
 
-#define SPEX_FREE_WORK               \
+#define SPEX_FREE_ALL                \
     SPEX_MPZ_CLEAR(Lksk);            \
     SPEX_MPQ_CLEAR(pending_scale);   \
-    SPEX_MPQ_CLEAR(tmpz);
+    SPEX_MPZ_CLEAR(tmpz);
 
 #include "spex_internal.h"
 
@@ -31,22 +31,21 @@ SPEX_info spex_dppu1
 (
     SPEX_matrix *L,  // matrix L
     SPEX_matrix *U,  // matrix U
-    SPEX_matrix *S,  // array of size 3*n that stores pending scales
+    mpq_t *S,        // array of size 3*n that stores pending scales
     mpz_t *d,        // array of size n that stores the unscaled pivot
     mpz_t *sd,       // array of size n that stores the scaled pivot
     spex_scattered_vector *Lk_dense_col,// scattered column k of L
     spex_scattered_vector *Uk_dense_row,// scattered column k of U
     const mpq_t vk_scale,// scale factor for newly inserted column vk, which
                      // should be in col k of L in the last iteration when used.
-    int64_t *inext;  // the index of first off-diag entry in col k of L
-    int64_t *jnext;  // the index of first off-diag entry in row k of U
+    int64_t *inext,  // the index of first off-diag entry in col k of L
     int64_t *h,      // allocated vector that can be used for history vector.
                      // All entries are maintained to be >= -1
     int64_t *Q,      // column permutation
     int64_t *Q_inv,  // inverse of column permutation
-    const int64_t *P,// row permutation
-    const int64_t *P_inv,// inverse of row permutation
-    const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    int64_t *P,      // row permutation
+    int64_t *P_inv,  // inverse of row permutation
+    int64_t *Ldiag,  // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const int64_t *Uci,// the row index for col-wise nnz pattern of U
     const int64_t *Ucp,// col pointers for col-wise nnz pattern of U
     const int64_t *Ucx,// the value of k-th entry is found as
@@ -55,12 +54,11 @@ SPEX_info spex_dppu1
     const int64_t ks   // index of the diagonal to be swapped with, [0,n)
 )
 {
-
     // initialize workspace
     SPEX_info info;
     int sgn, Lksk_sgn;
-    int64_t pk, ck, pks, cks, tmpi;
-    spex_vector *v;
+    int64_t pk, ck, pks, cks, tmpi, j, n = U->n;
+    SPEX_vector *v;
 
     mpq_t pending_scale;
     SPEX_MPQ_SET_NULL(pending_scale);
@@ -98,7 +96,7 @@ SPEX_info spex_dppu1
         }
         else
         {
-            SPEX_CHECK(SPEX_mpz_fdiv_q(U->v[n-1]->x[0]
+            SPEX_CHECK(SPEX_mpz_fdiv_q(U->v[n-1]->x[0],
                                        U->v[n-1]->x[0], sd[n-2]));
             // pending_scale = S(1,k)*S(3,k)
             SPEX_CHECK(SPEX_mpq_mul(pending_scale, SPEX_2D(S, 1, k),
@@ -151,9 +149,6 @@ SPEX_info spex_dppu1
         // Columns of k and n will be swapped after calling this function, we
         // only need to swap rows of k and n-1
         // ---------------------------------------------------------------------
-        // update the nnz pattern of column k of U, Uk_x and Uk_i
-        Uk_i[0] = ks; // k-th row will become row ks after swap
-
         // swap rows k and n-1 of U           % O(1) time
         v = U->v[k];       U->v[k] = U->v[n-1];    U->v[n-1] = v;
 
@@ -195,7 +190,7 @@ SPEX_info spex_dppu1
         SPEX_CHECK(SPEX_mpz_mul(sd[n-1],
                                 sd[n-1], SPEX_MPQ_NUM(SPEX_2D(S, 3, n-1))));
 
-        SPEX_FREE_WORK;
+        SPEX_FREE_ALL;
         return SPEX_OK;
     }
 
@@ -417,13 +412,13 @@ SPEX_info spex_dppu1
             // the initialization for history vector is set as
             h[cks] = -2; // only entry in the nnz patter has h < -1
         }
-        SPEX_ASSERT(pks == Lk_dense_col->nz);
+        ASSERT(pks == Lk_dense_col->nz);
 
         // NOTE: this will cause fillin in the ks(th) column of L
         //       There is no subset relation between nnz pattern in L(:,ks)
         //       and L(:, k). Both could have explicit zero(s).
         //       L(:,k) can be jumbled.
-        inext = n;
+        *inext = n;
         for (pk = 0; pk < L->v[k]->nz; pk++)
         {
             // row index in column k of L
@@ -463,11 +458,11 @@ SPEX_info spex_dppu1
                 }
 
                 // check if this will be the first off diagonal entry in L(P,ks)
-                if (P_inv[ck] < inext)
+                if (P_inv[ck] < *inext)
                 {
                     // inext is the row index of the found first off-diagonal
                     // entry in L(P,ks)
-                    inext = P_inv[ck];
+                    *inext = P_inv[ck];
                 }
             }
             
@@ -491,10 +486,10 @@ SPEX_info spex_dppu1
                     Lk_dense_col->i[pks] = Lk_dense_col->i[Lk_dense_col->nz];
                 }
 
-                SPEX_CHECK(SPEX_mpz_sgn(&sgn, Lk_dense_col->x[ck]));
-                if (sgn != 0) // L(ck, ks) != 0
+                SPEX_CHECK(SPEX_mpz_sgn(&sgn, Lk_dense_col->x[cks]));
+                if (sgn != 0) // L(cks, ks) != 0
                 {
-                    // L(ck,ks) = (L(ck,ks)*d(k))/sd(k-1);
+                    // L(cks,ks) = (L(cks,ks)*d(k))/sd(k-1);
                     SPEX_CHECK(SPEX_mpz_mul(Lk_dense_col->x[cks],
                                             Lk_dense_col->x[cks], d[k]));
                     if (k > 0)
@@ -503,11 +498,11 @@ SPEX_info spex_dppu1
                                             Lk_dense_col->x[cks], sd[k-1]));
                     }
                     // check if this will be the 1st off-diag entry in L(P,ks)
-                    if (P_inv[ck] < inext)
+                    if (P_inv[cks] < *inext)
                     {
                         // inext is the row index of the found first
                         // off-diagonal entry in L(P,ks)
-                        inext = P_inv[ck];
+                        *inext = P_inv[cks];
                     }
                 }
                 // reset history vector to any value >= -1
@@ -532,9 +527,9 @@ SPEX_info spex_dppu1
                                 SPEX_2D(S, 3, ks), SPEX_2D(S, 1, ks)));
         SPEX_CHECK(SPEX_mpz_divexact(sd[ks], sd[ks],
                                 SPEX_MPQ_DEN(pending_scale)));
-        SPEX_CHECK(SPEX_mpz_mul(sd[ks], Lk_dense_col[P[ks]],
+        SPEX_CHECK(SPEX_mpz_mul(sd[ks], Lk_dense_col->x[P[ks]],
                                 SPEX_MPQ_NUM(pending_scale)));
     }
-    SPEX_FREE_WORK;
+    SPEX_FREE_ALL;
     return SPEX_OK;
 }

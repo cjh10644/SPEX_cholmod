@@ -27,7 +27,7 @@
 SPEX_info spex_insert_new_entry
 (
     mpz_t vi,          // the entry to be inserted as i-th entry of v1
-    SPEX_vector **v1,  // the vector that would add new entry
+    SPEX_vector *v1,   // the vector that would add new entry
     mpq_t S1,          // pending scale for v1
     const SPEX_vector *v2,// the other vector that is in same frame as v1
     mpq_t S2,          // pending scale for v2
@@ -74,14 +74,14 @@ SPEX_info spex_insert_new_entry
         SPEX_CHECK(SPEX_mpz_divexact(vi, vi, gcd));
         SPEX_CHECK(SPEX_mpz_divexact(SPEX_MPQ_NUM(S1), SPEX_MPQ_NUM(S1), gcd));
 #endif
-        for (p = 0; p < *v1->nz; p++)
+        for (p = 0; p < v1->nz; p++)
         {
             // Since entries in v1 will be integer after scale, we can
             // perform division first to make it small, and this
             // division will preserve integer propety
-            SPEX_CHECK(SPEX_mpz_divexact(*v1->x[p], *v1->x[p],
+            SPEX_CHECK(SPEX_mpz_divexact(v1->x[p], v1->x[p],
                                        SPEX_MPQ_DEN(S1)));
-            SPEX_CHECK(SPEX_mpz_mul(*v1->x[p], *v1->x[p], SPEX_MPQ_NUM(S1)));
+            SPEX_CHECK(SPEX_mpz_mul(v1->x[p], v1->x[p], SPEX_MPQ_NUM(S1)));
         }
 #if 0
         SPEX_CHECK(SPEX_mpq_set_z(S1, gcd));
@@ -90,14 +90,14 @@ SPEX_info spex_insert_new_entry
 #endif
     }
     // append vi to v1
-    if (*v1->nz == *v1->nzmax)
+    if (v1->nz == v1->nzmax)
     {
         // reallocate the nonzero pattern if needed
-        SPEX_CHECK(spex_expand_vector(v1, 2*(*v1->nzmax));
+        SPEX_CHECK(spex_expand_vector(v1, 2*(v1->nzmax)));
     }
-    *v1->i[*v1->nz] = i;
-    SPEX_CHECK(SPEX_mpz_swap(*v1->x[*v1->nz], vi));
-    *v1->nz ++;
+    v1->i[v1->nz] = i;
+    SPEX_CHECK(SPEX_mpz_swap(v1->x[v1->nz], vi));
+    v1->nz ++;
 
     return SPEX_OK;
 }

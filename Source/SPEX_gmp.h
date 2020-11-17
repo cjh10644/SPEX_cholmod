@@ -21,11 +21,11 @@
 {                                                                       \
     spex_gmp_nmalloc = 0 ;                                              \
     /* setjmp returns 0 if called from here, or > 0 if from longjmp */  \
-    int spex_gmp_status = setjmp (slip_gmp_environment) ;               \
+    int spex_gmp_status = setjmp (spex_gmp_environment) ;               \
     if (spex_gmp_status != 0)                                           \
     {                                                                   \
         /* failure from longjmp */                                      \
-        spex_gmp_failure (slip_gmp_status) ;                            \
+        spex_gmp_failure (spex_gmp_status) ;                            \
         return (SPEX_OUT_OF_MEMORY) ;                                   \
     }                                                                   \
 }
