@@ -51,6 +51,7 @@ clean:
 # remove all files not in the distribution
 purge:
 	( cd Lib ; $(MAKE) purge )
+	( cd SuiteSparse_config && $(MAKE) purge )
 	#( cd Demo ; $(MAKE) purge )
 	#( cd Tcov ; $(MAKE) purge )
 	#- ( cd MATLAB/Source ; $(RM) *.o *.mex* )
