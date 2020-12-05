@@ -1,0 +1,27 @@
+        -:    0:Source:SPEX_free.c
+        -:    0:Graph:SPEX_free.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/SPEX_free: wrapper for free
+        -:    3://------------------------------------------------------------------------------
+        -:    4:
+        -:    5:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    6:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    7:// SPEX_CHOLMOD/License for the license.
+        -:    8:
+        -:    9://------------------------------------------------------------------------------
+        -:   10:
+        -:   11:// Free the memory allocated by SPEX_calloc, SPEX_malloc, or SPEX_realloc.
+        -:   12:
+        -:   13:#include "spex_internal.h"
+        -:   14:
+    #####:   15:void SPEX_free
+        -:   16:(
+        -:   17:    void *p         // pointer to memory space to free
+        -:   18:)
+        -:   19:{
+    #####:   20:    if (!spex_initialized ( )) return ;
+    #####:   21:    SuiteSparse_free (p) ;
+        -:   22:}
+        -:   23:

@@ -1,0 +1,95 @@
+        -:    0:Source:spex_finalize_and_insert_vk.c
+        -:    0:Graph:spex_finalize_and_insert_vk.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/spex_finalize_and_insert_vk.c: perform history update for
+        -:    3:// entries that would be in L and insert entries that would in U to
+        -:    4:// corresponding row of U.
+        -:    5://------------------------------------------------------------------------------
+        -:    6:
+        -:    7:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    8:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    9:// SPEX_CHOLMOD/License for the license.
+        -:   10:
+        -:   11://------------------------------------------------------------------------------
+        -:   12:
+        -:   13:// Purpose: This function is called to perform history update for entries that
+        -:   14:// would be in L and insert entries that would in U to corresponding row of U.
+        -:   15:// Entries that would appear in U are removed from the nnz pattern, while
+        -:   16:// entries that would be in L are moved to SPEX_vector vk and remained in nnz
+        -:   17:// pattern. The k-th entry (i.e., the new k-th pivot) is kept in both vk and
+        -:   18:// d[k] but not inserted to U.
+        -:   19:
+        -:   20:#include "spex_internal.h"
+        -:   21:
+    #####:   22:SPEX_info spex_finalize_and_insert_vk
+        -:   23:(
+        -:   24:    spex_scattered_vector *vk_dense, //scattered version of the solution for
+        -:   25:                      // LDx=v using the first k-1 columns of L
+        -:   26:    int64_t *h,       // history vector for vk_dense
+        -:   27:    SPEX_matrix *U,   // matrix U
+        -:   28:    SPEX_matrix *L,   // matrix L
+        -:   29:    mpq_t *S,         // array of size 3*n that stores pending scales
+        -:   30:    mpz_t *d,         // array of unscaled pivots
+        -:   31:    const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+        -:   32:    const mpz_t *sd,  // array of scaled pivots
+        -:   33:    const int64_t *Q, // the column permutation
+        -:   34:    const int64_t *P_inv,// inverse of row permutation
+        -:   35:    const int64_t k,  // the column index in L that vk_dense will be inserted
+        -:   36:    const int64_t diag,// the index of entry in vk_dense that will be diagonal
+        -:   37:    const mpq_t one   // a const mpq number, just to avoid constantly alloc
+        -:   38:)
+        -:   39:{
+        -:   40:    SPEX_info info;
+    #####:   41:    int64_t i, p = 0, vk_nz = vk_dense->nz;
+        -:   42:
+        -:   43:    // move entries to U
+    #####:   44:    while(p < vk_nz)
+        -:   45:    {
+    #####:   46:        i = vk_dense->i[p];
+    #####:   47:        if (P_inv[i] < k)
+        -:   48:        {
+    #####:   49:            SPEX_CHECK(spex_insert_new_entry(vk_dense->x[i], U->v[i],
+        -:   50:                SPEX_2D(S, 2, i), L->v[i], SPEX_2D(S, 1, i), SPEX_2D(S, 3, i),
+        -:   51:                d[i], Q[k], Ldiag[i], one));
+    #####:   52:            vk_nz--;
+    #####:   53:            vk_dense->i[p] = vk_dense->i[vk_nz];
+        -:   54:        }
+        -:   55:        else
+        -:   56:        {
+    #####:   57:            p++;
+        -:   58:        }
+        -:   59:    }
+        -:   60:
+        -:   61:    // check if L->v[k] needs more space for all remaining entries
+    #####:   62:    if (vk_nz > L->v[k]->nzmax)
+        -:   63:    {
+    #####:   64:        SPEX_CHECK(SPEX_vector_realloc(L->v[k], vk_nz));
+        -:   65:    }
+        -:   66:
+        -:   67:    // move the remaining entries to L->v[k]
+    #####:   68:    for (p = 0; p < vk_nz; p++)
+        -:   69:    {
+    #####:   70:        i = vk_dense->i[p];
+    #####:   71:        h[i] = SPEX_FLIP(h[i]);
+    #####:   72:        if (h[i] < k-1)
+        -:   73:        {
+    #####:   74:            SPEX_CHECK(SPEX_mpz_mul(vk_dense->x[i], vk_dense->x[i], sd[k-1]));
+    #####:   75:            if (h[i] > -1)
+        -:   76:            {
+    #####:   77:                SPEX_CHECK(SPEX_mpz_divexact(vk_dense->x[i],
+        -:   78:                                             vk_dense->x[i], sd[h[i]]));
+        -:   79:            }
+        -:   80:        }
+    #####:   81:        if (P_inv[i] == diag)
+        -:   82:        {
+    #####:   83:            SPEX_CHECK(SPEX_mpz_set(d[k], vk_dense->x[i]));
+        -:   84:        }
+    #####:   85:        SPEX_CHECK(SPEX_mpz_swap(L->v[k]->x[p], vk_dense->x[i]));
+    #####:   86:        L->v[k]->i[p] = i;
+        -:   87:    }
+    #####:   88:    L->v[k]->nz = vk_nz;
+        -:   89:
+    #####:   90:    return SPEX_OK;
+        -:   91:}

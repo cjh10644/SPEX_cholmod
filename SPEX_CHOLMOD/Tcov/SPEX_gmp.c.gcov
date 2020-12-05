@@ -1,0 +1,1862 @@
+        -:    0:Source:SPEX_gmp.c
+        -:    0:Graph:SPEX_gmp.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/SPEX_gmp.c: interface to the gmp library
+        -:    3://------------------------------------------------------------------------------
+        -:    4:
+        -:    5:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis,
+        -:    6:// Erick Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    7:// SPEX_CHOLMOD/License for the license.
+        -:    8:
+        -:    9://------------------------------------------------------------------------------
+        -:   10:
+        -:   11:// Purpose: This file (SPEX_gmp.c) provides a wrapper for all functions in the
+        -:   12:// GMP library used by SPEX_CHOLMOD.  The wrappers enable memory failures to be
+        -:   13:// caught and handled properly.  GMP, by default, aborts the user's application
+        -:   14:// if any internal malloc fails.  This is not acceptable in a robust end-user
+        -:   15:// application.  Fortunately, GMP allows the user package (SPEX_CHOLMOD in this
+        -:   16:// case) to pass in function pointers for malloc, calloc, realloc, and free.
+        -:   17:// These functions are defined below.  If they fail, they do not return to GMP.
+        -:   18:// Instead, they use the ANSI C longjmp feature to trap the error, and return
+        -:   19:// the error condition to the caller.
+        -:   20:
+        -:   21:// Note that not all functions in the GMP library are wrapped by these
+        -:   22:// functions, but just the ones used by SPEX_CHOLMOD.  However, most of the wrapper
+        -:   23:// functions follow the same structure, and this method would easily extend to
+        -:   24:// all GMP functions.  To that end, the wrapper mechanism (here, and in
+        -:   25:// SPEX_gmp.h) is described below.
+        -:   26:
+        -:   27:// For a given GMP function 'gmpfunc' with no return value, the SPEX wrapper is
+        -:   28:// SPEX_gmpfunc, with the same arguments:
+        -:   29:
+        -:   30:/*
+        -:   31:    SPEX_info SPEX_gmpfunc (args)
+        -:   32:    {
+        -:   33:        SPEX_GMP_WRAPPER_START ;
+        -:   34:        gmpfunc (args) ;
+        -:   35:        SPEX_GMP_WRAPPER_FINISH ;
+        -:   36:        return SPEX_OK ;
+        -:   37:    }
+        -:   38:*/
+        -:   39:
+        -:   40:// The SPEX_GMP*_WRAPPER_START and SPEX_GMP_WRAPPER_FINISH macros work together
+        -:   41:// to establish a try/catch mechanism, via setjmp and longjmp.  If a memory
+        -:   42:// error occurs, a NULL is not returned to GMP (which would terminate the user
+        -:   43:// application).  Instead, the malloc wrapper traps the error via the longjmp,
+        -:   44:// and an out-of-memory condition is returned to the caller of SPEX_gmpfunc.
+        -:   45:
+        -:   46:// If the gmpfunc has a return value, as in r = mpz_cmp (x,y), the return value
+        -:   47:// is passed as the first argument to the SPEX_gmpfunc:
+        -:   48:
+        -:   49:/*
+        -:   50:    SPEX_info SPEX_gmfunc (result, args)
+        -:   51:    {
+        -:   52:        SPEX_GMP_WRAPPER_START ;
+        -:   53:        (*result) = gmpfunc (args) ;
+        -:   54:        SPEX_GMP_WRAPPER_FINISH ;
+        -:   55:        return SPEX_OK ;
+        -:   56:    }
+        -:   57:*/
+        -:   58:
+        -:   59:// The SPEX_GMP*_WRAPPER_START macros also take an single 'archive' parameter,
+        -:   60:// for the current mpz, mpq, or mpfr object being operated on.  A pointer
+        -:   61:// parameter to this parameter is kept so that it can be safely freed in case
+        -:   62:// a memory error occurs (avoiding a double-free), in SPEX_GMP_SAFE_FREE.
+        -:   63:
+        -:   64:#include "spex_internal.h"
+        -:   65:#include "SPEX_gmp.h"
+        -:   66:
+        -:   67:// ignore warnings about unused parameters in this file
+        -:   68:#pragma GCC diagnostic ignored "-Wunused-parameter"
+        -:   69:
+        -:   70://------------------------------------------------------------------------------
+        -:   71:// global variables
+        -:   72://------------------------------------------------------------------------------
+        -:   73:
+        -:   74:jmp_buf spex_gmp_environment ;  // for setjmp and longjmp
+        -:   75:int64_t spex_gmp_nmalloc = 0 ;  // number of malloc'd objects in SPEX_gmp_list
+        -:   76:int64_t spex_gmp_nlist = 0 ;    // size of the SPEX_gmp_list
+        -:   77:void **spex_gmp_list = NULL ;   // list of malloc'd objects
+        -:   78:
+        -:   79:int64_t spex_gmp_ntrials = -1 ; // number of malloc's allowed (for
+        -:   80:                                // testing only): -1 means unlimited.
+        -:   81:
+        -:   82:mpz_t  *spex_gmpz_archive  = NULL ;    // current mpz object
+        -:   83:mpq_t  *spex_gmpq_archive  = NULL ;    // current mpq object
+        -:   84:mpfr_t *spex_gmpfr_archive = NULL ;    // current mpfr object
+        -:   85:
+        -:   86://------------------------------------------------------------------------------
+        -:   87:// spex_gmp_init: initialize gmp
+        -:   88://------------------------------------------------------------------------------
+        -:   89:
+        -:   90:/* Purpose: Create the list of malloc'd objects. This should be called before
+        -:   91: * calling any GMP function. It is also called by SPEX_gmp_allocate when
+        -:   92: * SPEX_gmp_list is NULL
+        -:   93: */
+        -:   94:
+    #####:   95:bool spex_gmp_init ( )
+        -:   96:{
+    #####:   97:    spex_gmp_nmalloc = 0 ;
+    #####:   98:    spex_gmp_nlist = SPEX_GMP_LIST_INIT ;
+    #####:   99:    spex_gmp_list = (void **) SPEX_malloc (spex_gmp_nlist * sizeof (void *)) ;
+    #####:  100:    return (spex_gmp_list != NULL) ;
+        -:  101:}
+        -:  102:
+        -:  103://------------------------------------------------------------------------------
+        -:  104:// SPEX_gmp_finalize: finalize gmp
+        -:  105://------------------------------------------------------------------------------
+        -:  106:
+        -:  107:/* Purpose: Free the list. Must be called when all use of GMP is done */
+    #####:  108:void spex_gmp_finalize ( )
+        -:  109:{
+    #####:  110:    spex_gmpz_archive = NULL ;
+    #####:  111:    spex_gmpq_archive = NULL ;
+    #####:  112:    spex_gmpfr_archive = NULL ;
+    #####:  113:    spex_gmp_nmalloc = 0 ;
+    #####:  114:    spex_gmp_nlist = 0 ;
+    #####:  115:    SPEX_FREE (spex_gmp_list) ;
+    #####:  116:}
+        -:  117:
+        -:  118://------------------------------------------------------------------------------
+        -:  119:// SPEX_gmp_allocate: malloc space for gmp
+        -:  120://------------------------------------------------------------------------------
+        -:  121:
+        -:  122:/* Purpose: malloc space for gmp. A NULL pointer is never returned to the GMP
+        -:  123: * library. If the allocation fails, all memory allocated since the start of
+        -:  124: * the SPEX_gmp_wrapper is freed and an error is thrown to the GMP wrapper via
+        -:  125: * longjmp
+        -:  126: */
+        -:  127:
+    #####:  128:void *spex_gmp_allocate
+        -:  129:(
+        -:  130:    size_t size // Amount of memory to be allocated
+        -:  131:)
+        -:  132:{
+        -:  133:
+        -:  134:    #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  135:    SPEX_PRINTF ("spex_gmp_malloc (%g): ", (double) size) ;
+        -:  136:    #endif
+        -:  137:
+        -:  138:    //--------------------------------------------------------------------------
+        -:  139:    // for testing only:
+        -:  140:    //--------------------------------------------------------------------------
+        -:  141:
+    #####:  142:    if (spex_gmp_ntrials == 0)
+        -:  143:    {
+        -:  144:        // pretend to fail
+        -:  145:        #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  146:        SPEX_PRINTF ("spex_gmp_allocate pretends to fail\n") ;
+        -:  147:        #endif
+    #####:  148:        longjmp (spex_gmp_environment, 1) ;
+        -:  149:    }
+    #####:  150:    else if (spex_gmp_ntrials > 0)
+        -:  151:    {
+        -:  152:        // one more malloc has been used up
+    #####:  153:        spex_gmp_ntrials-- ;
+        -:  154:    }
+        -:  155:
+        -:  156:    //--------------------------------------------------------------------------
+        -:  157:    // ensure the SPEX_gmp_list is large enough
+        -:  158:    //--------------------------------------------------------------------------
+        -:  159:
+    #####:  160:    if (spex_gmp_list == NULL)
+        -:  161:    {
+        -:  162:        // create the initial SPEX_gmp_list
+    #####:  163:        if (!spex_gmp_init ( ))
+        -:  164:        {
+        -:  165:            // failure to create the SPEX_gmp_list
+    #####:  166:            longjmp (spex_gmp_environment, 2) ;
+        -:  167:        }
+        -:  168:    }
+    #####:  169:    else if (spex_gmp_nmalloc == spex_gmp_nlist)
+        -:  170:    {
+        -:  171:        // double the size of the SPEX_gmp_list
+        -:  172:        bool ok ;
+    #####:  173:        int64_t newsize = 2 * spex_gmp_nlist ;
+    #####:  174:        spex_gmp_list = (void **)
+    #####:  175:            SPEX_realloc (newsize, spex_gmp_nlist, sizeof (void *),
+        -:  176:            spex_gmp_list, &ok) ;
+    #####:  177:        if (!ok)
+        -:  178:        {
+        -:  179:            // failure to double the size of the SPEX_gmp_list.
+        -:  180:            // The existing SPEX_gmp_list is still valid, with the old size,
+        -:  181:            // (SPEX_gmp_nlist).  This is required so that the error handler
+        -:  182:            // can traverse the SPEX_gmp_list to free all objects there.
+    #####:  183:            longjmp (spex_gmp_environment, 3) ;
+        -:  184:        }
+        -:  185:        // success; the old SPEX_gmp_list has been freed, and replaced with
+        -:  186:        // the larger newlist.
+    #####:  187:        spex_gmp_nlist = newsize ;
+        -:  188:    }
+        -:  189:
+        -:  190:    //--------------------------------------------------------------------------
+        -:  191:    // malloc the block
+        -:  192:    //--------------------------------------------------------------------------
+        -:  193:
+    #####:  194:    void *p = SPEX_malloc (size) ;
+        -:  195:
+    #####:  196:    if (p == NULL)
+        -:  197:    {
+        -:  198:        // failure to allocate the new block
+    #####:  199:        longjmp (spex_gmp_environment, 4) ;
+        -:  200:    }
+        -:  201:
+        -:  202:    //--------------------------------------------------------------------------
+        -:  203:    // save p in the SPEX_gmp_list and return result to GMP
+        -:  204:    //--------------------------------------------------------------------------
+        -:  205:
+    #####:  206:    spex_gmp_list [spex_gmp_nmalloc++] = p ;
+        -:  207:
+        -:  208:    #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  209:    SPEX_PRINTF (" %p\n", p) ;
+        -:  210:    spex_gmp_dump ( ) ;
+        -:  211:    #endif
+        -:  212:
+        -:  213:    // return p to SPEX_gmp_function (NEVER return a NULL pointer to GMP!)
+        -:  214:    ASSERT (p != NULL) ;
+    #####:  215:    return (p) ;
+        -:  216:}
+        -:  217:
+        -:  218://------------------------------------------------------------------------------
+        -:  219:// spex_gmp_free: free space for gmp
+        -:  220://------------------------------------------------------------------------------
+        -:  221:
+        -:  222:/* Purpose: Free space for GMP */
+    #####:  223:void spex_gmp_free
+        -:  224:(
+        -:  225:    void *p,        // Block to be freed
+        -:  226:    size_t size     // Size of p (currently an unused parameter)
+        -:  227:)
+        -:  228:{
+        -:  229:    #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  230:    SPEX_PRINTF ("\n=================== free %p\n", p) ;
+        -:  231:    spex_gmp_dump ( ) ;
+        -:  232:    #endif
+        -:  233:
+    #####:  234:    if (p != NULL && spex_gmp_list != NULL)
+        -:  235:    {
+        -:  236:        // remove p from the SPEX_gmp_list
+    #####:  237:        for (int64_t i = 0 ; i < spex_gmp_nmalloc ; i++)
+        -:  238:        {
+    #####:  239:            if (spex_gmp_list [i] == p)
+        -:  240:            {
+        -:  241:                #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  242:                SPEX_PRINTF ("    found at i = %d\n", i) ;
+        -:  243:                #endif
+    #####:  244:                spex_gmp_list [i] = spex_gmp_list [--spex_gmp_nmalloc] ;
+    #####:  245:                break ;
+        -:  246:            }
+        -:  247:        }
+        -:  248:    }
+        -:  249:
+        -:  250:    #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  251:    spex_gmp_dump ( ) ;
+        -:  252:    #endif
+        -:  253:
+        -:  254:    // free p, even if it is not found in the SPEX_gmp_list.  p is only in the
+        -:  255:    // SPEX_gmp_list if it was allocated inside the current GMP function.
+        -:  256:    // If the block was allocated by one GMP function and freed by another,
+        -:  257:    // it is not in the list.
+    #####:  258:    SPEX_GMP_SAFE_FREE (p) ;
+    #####:  259:}
+        -:  260:
+        -:  261://------------------------------------------------------------------------------
+        -:  262:// spex_gmp_reallocate:  wrapper for realloc
+        -:  263://------------------------------------------------------------------------------
+        -:  264:
+        -:  265:/* Purpose: Wrapper for GMP to call reallocation */
+    #####:  266:void *spex_gmp_reallocate
+        -:  267:(
+        -:  268:    void *p_old,        // Pointer to be realloc'd
+        -:  269:    size_t old_size,    // Old size of p
+        -:  270:    size_t new_size     // New size of p
+        -:  271:)
+        -:  272:{
+        -:  273:    #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  274:    SPEX_PRINTF ("spex_gmp_realloc (%p, %g, %g)\n", p_old,
+        -:  275:        (double) old_size, (double) new_size) ;
+        -:  276:    #endif
+        -:  277:
+    #####:  278:    if (p_old == NULL)
+        -:  279:    {
+        -:  280:        // realloc (NULL, size) is the same as malloc (size)
+    #####:  281:        return (spex_gmp_allocate (new_size)) ;
+        -:  282:    }
+    #####:  283:    else if (new_size == 0)
+        -:  284:    {
+        -:  285:        // realloc (p, 0) is the same as free (p), and returns NULL
+    #####:  286:        spex_gmp_free (p_old, old_size) ;
+    #####:  287:        return (NULL) ;
+        -:  288:    }
+        -:  289:    else
+        -:  290:    {
+        -:  291:        // change the size of the block
+    #####:  292:        void *p_new = spex_gmp_allocate (new_size) ;
+        -:  293:        // Note that p_new will never be NULL here, since SPEX_gmp_allocate
+        -:  294:        // does not return if it fails.
+    #####:  295:        memcpy (p_new, p_old, SPEX_MIN (old_size, new_size)) ;
+    #####:  296:        spex_gmp_free (p_old, old_size) ;
+    #####:  297:        return (p_new) ;
+        -:  298:    }
+        -:  299:}
+        -:  300:
+        -:  301://------------------------------------------------------------------------------
+        -:  302:// spex_gmp_dump: debug function
+        -:  303://------------------------------------------------------------------------------
+        -:  304:
+        -:  305:/* Purpose: Dump the list of malloc'd objects */
+        -:  306:#ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  307:void spex_gmp_dump ( )
+        -:  308:{
+        -:  309:    // dump the SPEX_gmp_list
+        -:  310:    SPEX_PRINTF ("nmalloc = %g, SPEX_gmp_nlist = %g\n",
+        -:  311:        (double) spex_gmp_nmalloc, (double) spex_gmp_nlist) ;
+        -:  312:    if (spex_gmp_list != NULL)
+        -:  313:    {
+        -:  314:        for (int64_t i = 0 ; i < spex_gmp_nmalloc ; i++)
+        -:  315:        {
+        -:  316:            SPEX_PRINTF ("    spex_gmp_list [%d] = %p\n", i, spex_gmp_list [i]);
+        -:  317:        }
+        -:  318:    }
+        -:  319:}
+        -:  320:#endif
+        -:  321:
+        -:  322://------------------------------------------------------------------------------
+        -:  323:// spex_gmp_failure: catch an error
+        -:  324://------------------------------------------------------------------------------
+        -:  325:
+        -:  326:/* Purpose: Catch an error from longjmp */
+    #####:  327:void spex_gmp_failure
+        -:  328:(
+        -:  329:    int status      // Status returned from longjmp
+        -:  330:                    // (unused parameter unless debugging)
+        -:  331:)
+        -:  332:{
+        -:  333:    #ifdef SPEX_GMP_MEMORY_DEBUG
+        -:  334:    SPEX_PRINTF ("failure from longjmp: status: %d\n", status) ;
+        -:  335:    #endif
+        -:  336:
+        -:  337:    // first free all caches
+    #####:  338:    mpfr_free_cache ( ) ;
+        -:  339:
+        -:  340:    // Free the list
+    #####:  341:    if (spex_gmp_list != NULL)
+        -:  342:    {
+    #####:  343:        for (int64_t i = 0 ; i < spex_gmp_nmalloc ; i++)
+        -:  344:        {
+    #####:  345:            SPEX_GMP_SAFE_FREE (spex_gmp_list [i]) ;
+        -:  346:        }
+        -:  347:    }
+    #####:  348:    spex_gmp_finalize ( ) ;
+    #####:  349:}
+        -:  350:
+        -:  351://------------------------------------------------------------------------------
+        -:  352://------------------------------------------------------------------------------
+        -:  353://----------------------------Print and Scan functions--------------------------
+        -:  354://------------------------------------------------------------------------------
+        -:  355://------------------------------------------------------------------------------
+        -:  356:
+        -:  357://------------------------------------------------------------------------------
+        -:  358:// SPEX_gmp_fprintf
+        -:  359://------------------------------------------------------------------------------
+        -:  360:
+        -:  361:/* Safely print to the stream fp. Return positive value (the number of
+        -:  362: * characters written) upon success, otherwise return negative value (error
+        -:  363: * code) */
+        -:  364:
+        -:  365:#if 0
+        -:  366:/* This function is currently unused, but kept here for future reference. */
+        -:  367:
+        -:  368:SPEX_info SPEX_gmp_fprintf
+        -:  369:(
+        -:  370:    FILE *fp,
+        -:  371:    const char *format,
+        -:  372:    ...
+        -:  373:)
+        -:  374:{
+        -:  375:    // Start the GMP wrapper
+        -:  376:    SPEX_GMP_WRAPPER_START ;
+        -:  377:
+        -:  378:    // call gmp_vfprintf
+        -:  379:    va_list args;
+        -:  380:    va_start (args, format) ;
+        -:  381:    int n = gmp_vfprintf (fp, format, args) ;
+        -:  382:    va_end (args) ;
+        -:  383:
+        -:  384:    // Finish the wrapper
+        -:  385:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  386:    // gmp_vfprintf returns -1 if an error occurred.
+        -:  387:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  388:}
+        -:  389:#endif
+        -:  390:
+        -:  391://------------------------------------------------------------------------------
+        -:  392:// SPEX_gmp_printf
+        -:  393://------------------------------------------------------------------------------
+        -:  394:
+        -:  395:/* Safely print to the standard output stdout. Return positive value (the number
+        -:  396: * of characters written) upon success, otherwise return negative value (error
+        -:  397: * code) */
+        -:  398:/* This function is currently unused, but kept here for future reference. */
+    #####:  399:SPEX_info SPEX_gmp_printf
+        -:  400:(
+        -:  401:    const char *format,
+        -:  402:    ...
+        -:  403:)
+        -:  404:{
+        -:  405:    // Start the GMP wrapper
+    #####:  406:    SPEX_GMP_WRAPPER_START ;
+        -:  407:
+        -:  408:    // call gmp_vprintf
+        -:  409:    va_list args;
+    #####:  410:    va_start (args, format) ;
+    #####:  411:    int n = gmp_vprintf (format, args) ; 
+    #####:  412:    va_end (args) ;
+        -:  413:
+        -:  414:    // Finish the wrapper
+    #####:  415:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  416:    // gmp_vprintf returns -1 if an error occurred.
+    #####:  417:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  418:}
+        -:  419:
+        -:  420://------------------------------------------------------------------------------
+        -:  421:// SPEX_gmp_asprintf
+        -:  422://------------------------------------------------------------------------------
+        -:  423:
+        -:  424:/* Safely write the output as a null terminated string in a block of memory,
+        -:  425: * which is pointed to by a pointer stored in str. The block of memory must be
+        -:  426: * freed using SPEX_free. The return value is the number of characters
+        -:  427: * written in the string, excluding the null-terminator, or a negative value if
+        -:  428: * an error occurred */
+        -:  429:
+        -:  430:#if 0
+        -:  431:/* This function is currently unused, but kept here for future reference. */
+        -:  432:/* Its functionality is provided by SPEX_mpfr_asprintf. */
+        -:  433:SPEX_info SPEX_gmp_asprintf (char **str, const char *format, ... )
+        -:  434:{
+        -:  435:    // Start the GMP wrapper
+        -:  436:    SPEX_GMP_WRAPPER_START ;
+        -:  437:
+        -:  438:    // call gmp_vasprintf
+        -:  439:    va_list args;
+        -:  440:    va_start (args, format) ;
+        -:  441:    int n = gmp_vasprintf (str, format, args) ;
+        -:  442:    va_end (args) ;
+        -:  443:
+        -:  444:    // Finish the wrapper
+        -:  445:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  446:    // gmp_vasprintf returns a negative value if an error occurred
+        -:  447:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  448:}
+        -:  449:#endif
+        -:  450:
+        -:  451://------------------------------------------------------------------------------
+        -:  452:// SPEX_gmp_fscanf
+        -:  453://------------------------------------------------------------------------------
+        -:  454:
+        -:  455:/* Safely scan the stream fp. Return positive value (the number of fields
+        -:  456: * successfully parsed and stored), otherwise return negative value (error
+        -:  457: * code) */
+        -:  458:
+    #####:  459:SPEX_info SPEX_gmp_fscanf
+        -:  460:(
+        -:  461:    FILE *fp,
+        -:  462:    const char *format,
+        -:  463:    ...
+        -:  464:)
+        -:  465:{
+        -:  466:    // Start the GMP wrapper
+    #####:  467:    SPEX_GMP_WRAPPER_START ;
+        -:  468:
+        -:  469:    // call gmp_vfscanf
+        -:  470:    va_list args;
+    #####:  471:    va_start (args, format) ;
+    #####:  472:    int n = gmp_vfscanf (fp, format, args) ;
+    #####:  473:    va_end (args) ;
+        -:  474:
+        -:  475:    // Finish the wrapper
+    #####:  476:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  477:    // If end of input (or a file error) is reached before a character
+        -:  478:    // for a field or a literal, and if no previous non-suppressed fields have
+        -:  479:    // matched, then the return value is EOF instead of 0
+    #####:  480:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  481:}
+        -:  482:
+        -:  483://------------------------------------------------------------------------------
+        -:  484:// SPEX_mpfr_asprintf
+        -:  485://------------------------------------------------------------------------------
+        -:  486:
+        -:  487:/* Safely write the output as a null terminated string in a block of memory,
+        -:  488: * which is pointed to by a pointer stored in str. The block of memory must be
+        -:  489: * freed using SPEX_mpfr_free_str. The return value is the number of characters
+        -:  490: * written in the string, excluding the null-terminator, or a negative value if
+        -:  491: * an error occurred */
+        -:  492:
+    #####:  493:SPEX_info SPEX_mpfr_asprintf (char **str, const char *format, ... )
+        -:  494:{
+        -:  495:    // Start the GMP wrapper
+    #####:  496:    SPEX_GMP_WRAPPER_START ;
+        -:  497:
+        -:  498:    // call mpfr_vasprintf
+        -:  499:    va_list args;
+    #####:  500:    va_start (args, format) ;
+    #####:  501:    int n = mpfr_vasprintf (str, format, args) ;
+    #####:  502:    va_end (args) ;
+        -:  503:
+        -:  504:    // Finish the wrapper
+    #####:  505:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  506:    // mpfr_vasprintf returns a negative value if an error occurred
+    #####:  507:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  508:}
+        -:  509:
+        -:  510://------------------------------------------------------------------------------
+        -:  511:// SPEX_mpfr_free_str
+        -:  512://------------------------------------------------------------------------------
+        -:  513:
+        -:  514:/* Safely free a string allocated by SPEX_mpfr_asprintf. */
+        -:  515:/* DONT TRY TO FREE NULL PONITER USING THIS FUNCTION*/
+        -:  516:
+    #####:  517:SPEX_info SPEX_mpfr_free_str (char *str)
+        -:  518:{
+        -:  519:    // Start the GMP wrapper
+    #####:  520:    SPEX_GMP_WRAPPER_START ;
+        -:  521:
+        -:  522:    // call mpfr_free_str
+    #####:  523:    mpfr_free_str (str) ;
+        -:  524:
+        -:  525:    // Finish the wrapper and return 0 if successful
+    #####:  526:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  527:    return (SPEX_OK) ;
+        -:  528:}
+        -:  529:
+        -:  530://------------------------------------------------------------------------------
+        -:  531:// SPEX_mpfr_fprintf
+        -:  532://------------------------------------------------------------------------------
+        -:  533:
+        -:  534:/* Safely print to the stream fp. Return positive value (the number of
+        -:  535: * characters written) upon success, otherwise return negative value (error
+        -:  536: * code) */
+        -:  537:
+        -:  538:#if 0
+        -:  539:/* This function is currently unused, but kept here for future reference. */
+        -:  540:
+        -:  541:SPEX_info SPEX_mpfr_fprintf
+        -:  542:(
+        -:  543:    FILE *fp,
+        -:  544:    const char *format,
+        -:  545:    ...
+        -:  546:)
+        -:  547:{
+        -:  548:    // Start the GMP wrapper
+        -:  549:    SPEX_GMP_WRAPPER_START ;
+        -:  550:
+        -:  551:    // call mpfr_vfprintf
+        -:  552:    va_list args;
+        -:  553:    va_start (args, format) ;
+        -:  554:    int n = mpfr_vfprintf (fp, format, args) ;
+        -:  555:    va_end (args) ;
+        -:  556:    // Free cache from mpfr_vfprintf. Even though mpfr_free_cache is
+        -:  557:    // called in SPEX_CHOLMOD_final ( ), it has to be called here to
+        -:  558:    // prevent memory leak in some rare situations.
+        -:  559:    mpfr_free_cache ( ) ;
+        -:  560:
+        -:  561:    // Finish the wrapper
+        -:  562:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  563:    // mpfr_vfprintf returns -1 if an error occurred.
+        -:  564:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  565:}
+        -:  566:#endif
+        -:  567:
+        -:  568://------------------------------------------------------------------------------
+        -:  569:// SPEX_mpfr_printf
+        -:  570://------------------------------------------------------------------------------
+        -:  571:
+        -:  572:/* Safely print to the standard output stdout. Return positive value (the number
+        -:  573: * of characters written) upon success, otherwise return negative value (error
+        -:  574: * code) */
+        -:  575:
+        -:  576:#if 0
+        -:  577:/* This function is currently unused, but kept here for future reference. */
+        -:  578:SPEX_info SPEX_mpfr_printf
+        -:  579:(
+        -:  580:    const char *format,
+        -:  581:    ...
+        -:  582:)
+        -:  583:{
+        -:  584:    // Start the GMP wrapper
+        -:  585:    SPEX_GMP_WRAPPER_START ;
+        -:  586:
+        -:  587:    // call mpfr_vprintf
+        -:  588:    va_list args;
+        -:  589:    va_start (args, format) ;
+        -:  590:    int n = mpfr_vprintf (format, args) ; 
+        -:  591:    va_end (args) ;
+        -:  592:    // Free cache from mpfr_vprintf. Even though mpfr_free_cache is
+        -:  593:    // called in SPEX_CHOLMOD_final ( ), it has to be called here to
+        -:  594:    // prevent memory leak in some rare situations.
+        -:  595:    mpfr_free_cache ( ) ;
+        -:  596:
+        -:  597:    // Finish the wrapper
+        -:  598:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  599:    // mpfr_vprintf returns -1 if an error occurred.
+        -:  600:    return ((n < 0) ? SPEX_INCORRECT_INPUT : SPEX_OK) ;
+        -:  601:}
+        -:  602:#endif
+        -:  603://------------------------------------------------------------------------------
+        -:  604://------------------------------------------------------------------------------
+        -:  605://-------------------------Integer (mpz_t type) functions-----------------------
+        -:  606://------------------------------------------------------------------------------
+        -:  607://------------------------------------------------------------------------------
+        -:  608:
+        -:  609://------------------------------------------------------------------------------
+        -:  610:// SPEX_mpz_init
+        -:  611://------------------------------------------------------------------------------
+        -:  612:
+        -:  613:/* Purpose: Safely initialize an mpz_t number */
+        -:  614:
+    #####:  615:SPEX_info SPEX_mpz_init
+        -:  616:(
+        -:  617:    mpz_t x
+        -:  618:)
+        -:  619:{
+    #####:  620:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  621:    mpz_init (x) ;
+    #####:  622:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  623:    return (SPEX_OK) ;
+        -:  624:}
+        -:  625:
+        -:  626://------------------------------------------------------------------------------
+        -:  627:// SPEX_mpz_init2
+        -:  628://------------------------------------------------------------------------------
+        -:  629:
+        -:  630:/* Purpose: Safely initialize an mpz_t number with space for size bits */
+        -:  631:
+    #####:  632:SPEX_info SPEX_mpz_init2
+        -:  633:(
+        -:  634:    mpz_t x,                // Number to be initialized
+        -:  635:    const size_t size       // size of the number
+        -:  636:)
+        -:  637:{
+    #####:  638:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  639:    mpz_init2 (x, (mp_bitcnt_t) size) ;
+    #####:  640:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  641:    return (SPEX_OK) ;
+        -:  642:}
+        -:  643:
+        -:  644://------------------------------------------------------------------------------
+        -:  645:// SPEX_mpz_set
+        -:  646://------------------------------------------------------------------------------
+        -:  647:
+        -:  648:/* Purpose: Safely set an mpz number = to an mpz number, i.e., x = y */
+        -:  649:
+    #####:  650:SPEX_info SPEX_mpz_set
+        -:  651:(
+        -:  652:    mpz_t x,
+        -:  653:    const mpz_t y
+        -:  654:)
+        -:  655:{
+    #####:  656:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  657:    mpz_set (x, y) ;
+    #####:  658:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  659:    return (SPEX_OK) ;
+        -:  660:}
+        -:  661:
+        -:  662://------------------------------------------------------------------------------
+        -:  663:// SPEX_mpz_set_ui
+        -:  664://------------------------------------------------------------------------------
+        -:  665:
+        -:  666:/* Purpose: Safely set an mpz number = to uint64_t, i.e., x = y */
+        -:  667:
+    #####:  668:SPEX_info SPEX_mpz_set_ui
+        -:  669:(
+        -:  670:    mpz_t x,
+        -:  671:    const uint64_t y
+        -:  672:)
+        -:  673:{
+    #####:  674:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  675:    mpz_set_ui (x, (unsigned long int) y) ;
+    #####:  676:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  677:    return (SPEX_OK) ;
+        -:  678:}
+        -:  679:
+        -:  680://------------------------------------------------------------------------------
+        -:  681:// SPEX_mpz_set_si
+        -:  682://------------------------------------------------------------------------------
+        -:  683:
+        -:  684:/* Purpose: Safely set an mpz number = a signed int64_t */
+        -:  685:
+    #####:  686:SPEX_info SPEX_mpz_set_si
+        -:  687:(
+        -:  688:    mpz_t x,
+        -:  689:    const int64_t y
+        -:  690:)
+        -:  691:{
+    #####:  692:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  693:    mpz_set_si (x, (signed long int) y) ;
+    #####:  694:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  695:    return (SPEX_OK) ;
+        -:  696:}
+        -:  697:#if 0
+        -:  698:/* This function is currently unused, but kept here for future reference. */
+        -:  699://------------------------------------------------------------------------------
+        -:  700:// SPEX_mpz_set_d
+        -:  701://------------------------------------------------------------------------------
+        -:  702:
+        -:  703:/* Purpose: Safely set an mpz number = a double */
+        -:  704:
+        -:  705:SPEX_info SPEX_mpz_set_d
+        -:  706:(
+        -:  707:    mpz_t x,
+        -:  708:    const double y
+        -:  709:)
+        -:  710:{
+        -:  711:    SPEX_GMPZ_WRAPPER_START (x) ;
+        -:  712:    mpz_set_d (x, y) ;
+        -:  713:    SPEX_GMP_WRAPPER_FINISH ;
+        -:  714:    return (SPEX_OK) ;
+        -:  715:}
+        -:  716:#endif
+        -:  717:
+        -:  718://------------------------------------------------------------------------------
+        -:  719:// SPEX_mpz_get_d
+        -:  720://------------------------------------------------------------------------------
+        -:  721:
+        -:  722:/* Purpose: Safely set a double number = a mpz */
+        -:  723:
+    #####:  724:SPEX_info SPEX_mpz_get_d
+        -:  725:(
+        -:  726:    double *x,
+        -:  727:    const mpz_t y
+        -:  728:)
+        -:  729:{
+    #####:  730:    SPEX_GMP_WRAPPER_START ;
+    #####:  731:    *x = mpz_get_d (y) ;
+    #####:  732:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  733:    return (SPEX_OK) ;
+        -:  734:}
+        -:  735:
+        -:  736://------------------------------------------------------------------------------
+        -:  737:// SPEX_mpz_get_si
+        -:  738://------------------------------------------------------------------------------
+        -:  739:
+        -:  740:/* Purpose: Safely set an int64_t = a mpz */
+        -:  741:
+    #####:  742:SPEX_info SPEX_mpz_get_si
+        -:  743:(
+        -:  744:    int64_t *x,
+        -:  745:    const mpz_t y
+        -:  746:)
+        -:  747:{
+    #####:  748:    SPEX_GMP_WRAPPER_START ;
+    #####:  749:    *x = mpz_get_si (y) ;
+    #####:  750:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  751:    return (SPEX_OK) ;
+        -:  752:}
+        -:  753:
+        -:  754://------------------------------------------------------------------------------
+        -:  755:// SPEX_mpz_swap
+        -:  756://------------------------------------------------------------------------------
+        -:  757:
+        -:  758:/* Purpose: Safely swap the values x and y efficiently */
+        -:  759:
+    #####:  760:SPEX_info SPEX_mpz_swap
+        -:  761:(
+        -:  762:    mpz_t x,
+        -:  763:    mpz_t y
+        -:  764:)
+        -:  765:{
+    #####:  766:    SPEX_GMP_WRAPPER_START ;
+    #####:  767:    mpz_swap (x, y) ;
+    #####:  768:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  769:    return (SPEX_OK) ;
+        -:  770:}
+        -:  771:
+        -:  772://------------------------------------------------------------------------------
+        -:  773:// SPEX_mpz_set_q
+        -:  774://------------------------------------------------------------------------------
+        -:  775:
+        -:  776:/* Purpose: Safely set an mpz number = mpq number */
+        -:  777:
+    #####:  778:SPEX_info SPEX_mpz_set_q
+        -:  779:(
+        -:  780:    mpz_t x,
+        -:  781:    const mpq_t y
+        -:  782:)
+        -:  783:{
+    #####:  784:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  785:    mpz_set_q (x, y) ;
+    #####:  786:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  787:    return (SPEX_OK) ;
+        -:  788:}
+        -:  789:
+        -:  790://------------------------------------------------------------------------------
+        -:  791:// SPEX_mpz_mul
+        -:  792://------------------------------------------------------------------------------
+        -:  793:
+        -:  794:/* Purpose: Safely compute a = b*c */
+        -:  795:
+    #####:  796:SPEX_info SPEX_mpz_mul
+        -:  797:(
+        -:  798:    mpz_t a,
+        -:  799:    const mpz_t b,
+        -:  800:    const mpz_t c
+        -:  801:)
+        -:  802:{
+    #####:  803:    SPEX_GMPZ_WRAPPER_START (a) ;
+    #####:  804:    mpz_mul (a, b, c) ;
+    #####:  805:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  806:    return (SPEX_OK) ;
+        -:  807:}
+        -:  808:
+        -:  809://------------------------------------------------------------------------------
+        -:  810:// SPEX_mpz_sub
+        -:  811://------------------------------------------------------------------------------
+        -:  812:
+        -:  813:/* Purpose: Safely compute a = b-c */
+        -:  814:
+    #####:  815:SPEX_info SPEX_mpz_sub
+        -:  816:(
+        -:  817:    mpz_t a,
+        -:  818:    const mpz_t b,
+        -:  819:    const mpz_t c
+        -:  820:)
+        -:  821:{
+    #####:  822:    SPEX_GMPZ_WRAPPER_START (a) ;
+    #####:  823:    mpz_sub (a,b,c) ;
+    #####:  824:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  825:    return (SPEX_OK) ;
+        -:  826:}
+        -:  827:
+        -:  828://------------------------------------------------------------------------------
+        -:  829:// SPEX_mpz_add
+        -:  830://------------------------------------------------------------------------------
+        -:  831:
+        -:  832:/* Purpose: Safely compute a = b+c */
+        -:  833:
+    #####:  834:SPEX_info SPEX_mpz_add
+        -:  835:(
+        -:  836:    mpz_t a,
+        -:  837:    const mpz_t b,
+        -:  838:    const mpz_t c
+        -:  839:)
+        -:  840:{
+    #####:  841:    SPEX_GMPZ_WRAPPER_START (a) ;
+    #####:  842:    mpz_add (a,b,c) ;
+    #####:  843:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  844:    return (SPEX_OK) ;
+        -:  845:}
+        -:  846:
+        -:  847://------------------------------------------------------------------------------
+        -:  848:// SPEX_mpz_addmul
+        -:  849://------------------------------------------------------------------------------
+        -:  850:
+        -:  851:/* Purpose: Safely set an mpz number += product of two mpz numbers,
+        -:  852: * i.e., x = x + y*z */
+        -:  853:
+        -:  854:/* This function is currently unused, but kept here for future reference. */
+    #####:  855:SPEX_info SPEX_mpz_addmul
+        -:  856:(
+        -:  857:    mpz_t x,
+        -:  858:    const mpz_t y,
+        -:  859:    const mpz_t z
+        -:  860:)
+        -:  861:{
+    #####:  862:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  863:    mpz_addmul (x, y, z) ;
+    #####:  864:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  865:    return (SPEX_OK) ;
+        -:  866:}
+        -:  867:
+        -:  868://------------------------------------------------------------------------------
+        -:  869:// SPEX_mpz_submul
+        -:  870://------------------------------------------------------------------------------
+        -:  871:
+        -:  872:/* Purpose: Safely set an mpz number = itself minus a product of
+        -:  873: * mpz numbers, i.e., x = x - y*z
+        -:  874: */
+        -:  875:
+    #####:  876:SPEX_info SPEX_mpz_submul
+        -:  877:(
+        -:  878:    mpz_t x,
+        -:  879:    const mpz_t y,
+        -:  880:    const mpz_t z
+        -:  881:)
+        -:  882:{
+    #####:  883:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  884:    mpz_submul (x, y, z) ;
+    #####:  885:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  886:    return (SPEX_OK) ;
+        -:  887:}
+        -:  888:
+        -:  889://------------------------------------------------------------------------------
+        -:  890:// SPEX_mpz_fdiv_q
+        -:  891://------------------------------------------------------------------------------
+        -:  892:
+        -:  893:/* Purpose: Safe version of dividing n by d, forming a quotient q and/or
+        -:  894: * remainder r.
+        -:  895: * fdiv rounds q down towards -infinity, and r will have the same sign as d.
+        -:  896: * The f stands for “floor”. That is, q = floor(n/d)
+        -:  897: */
+        -:  898:
+    #####:  899:SPEX_info SPEX_mpz_fdiv_q
+        -:  900:(
+        -:  901:    mpz_t q,
+        -:  902:    const mpz_t n,
+        -:  903:    const mpz_t d
+        -:  904:)
+        -:  905:{
+    #####:  906:    SPEX_GMPZ_WRAPPER_START (q) ;
+    #####:  907:    mpz_divexact (q, n, d) ;
+    #####:  908:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  909:    return (SPEX_OK) ;
+        -:  910:}
+        -:  911:
+        -:  912://------------------------------------------------------------------------------
+        -:  913:// SPEX_mpz_divexact
+        -:  914://------------------------------------------------------------------------------
+        -:  915:
+        -:  916:/* Purpose: Safe version of dividing n by d, forming a quotient q and/or
+        -:  917: * remainder r.
+        -:  918: * cdiv rounds q up towards +infinity, and r will have the opposite sign to d.
+        -:  919: * The c stands for “ceil”. That is, q = ceil(n/d)
+        -:  920: */
+        -:  921:
+    #####:  922:SPEX_info SPEX_mpz_cdiv_q
+        -:  923:(
+        -:  924:    mpz_t q,
+        -:  925:    const mpz_t n,
+        -:  926:    const mpz_t d
+        -:  927:)
+        -:  928:{
+    #####:  929:    SPEX_GMPZ_WRAPPER_START (q) ;
+    #####:  930:    mpz_divexact (q, n, d) ;
+    #####:  931:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  932:    return (SPEX_OK) ;
+        -:  933:}
+        -:  934:
+        -:  935://------------------------------------------------------------------------------
+        -:  936:// SPEX_mpz_divexact
+        -:  937://------------------------------------------------------------------------------
+        -:  938:
+        -:  939:/* Purpose: Safe version of exact integer division, i.e., x = y / z */
+        -:  940:
+    #####:  941:SPEX_info SPEX_mpz_divexact
+        -:  942:(
+        -:  943:    mpz_t x,
+        -:  944:    const mpz_t y,
+        -:  945:    const mpz_t z
+        -:  946:)
+        -:  947:{
+    #####:  948:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  949:    mpz_divexact (x, y, z) ;
+    #####:  950:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  951:    return (SPEX_OK) ;
+        -:  952:}
+        -:  953:
+        -:  954://------------------------------------------------------------------------------
+        -:  955:// SPEX_mpz_gcd
+        -:  956://------------------------------------------------------------------------------
+        -:  957:
+        -:  958:/* Purpose: Safely compute the gcd of two mpz_t numbers, i.e., x = gcd (y, z) */
+        -:  959:
+    #####:  960:SPEX_info SPEX_mpz_gcd
+        -:  961:(
+        -:  962:    mpz_t x,
+        -:  963:    const mpz_t y,
+        -:  964:    const mpz_t z
+        -:  965:)
+        -:  966:{
+    #####:  967:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####:  968:    mpz_gcd (x, y, z) ;
+    #####:  969:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  970:    return (SPEX_OK) ;
+        -:  971:}
+        -:  972:
+        -:  973://------------------------------------------------------------------------------
+        -:  974:// SPEX_mpz_lcm
+        -:  975://------------------------------------------------------------------------------
+        -:  976:
+        -:  977:/* Purpose: Safely compute the lcm of two mpz numbers */
+        -:  978:
+    #####:  979:SPEX_info SPEX_mpz_lcm
+        -:  980:(
+        -:  981:    mpz_t lcm,   // lcm of x and y
+        -:  982:    const mpz_t x,
+        -:  983:    const mpz_t y
+        -:  984:)
+        -:  985:{
+    #####:  986:    SPEX_GMPZ_WRAPPER_START (lcm) ;
+    #####:  987:    mpz_lcm (lcm, x, y) ;
+    #####:  988:    SPEX_GMP_WRAPPER_FINISH ;
+    #####:  989:    return (SPEX_OK) ;
+        -:  990:}
+        -:  991:
+        -:  992://------------------------------------------------------------------------------
+        -:  993:// SPEX_mpz_neg
+        -:  994://------------------------------------------------------------------------------
+        -:  995:
+        -:  996:/* Purpose: Safely set x = -y */
+        -:  997:
+    #####:  998:SPEX_info SPEX_mpz_neg
+        -:  999:(
+        -: 1000:    mpz_t x,
+        -: 1001:    const mpz_t y
+        -: 1002:)
+        -: 1003:{
+    #####: 1004:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####: 1005:    mpz_neg (x, y) ;
+    #####: 1006:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1007:    return (SPEX_OK) ;
+        -: 1008:}
+        -: 1009:
+        -: 1010://------------------------------------------------------------------------------
+        -: 1011:// SPEX_mpz_abs
+        -: 1012://------------------------------------------------------------------------------
+        -: 1013:
+        -: 1014:/* Purpose: Safely set x = |y| */
+        -: 1015:
+    #####: 1016:SPEX_info SPEX_mpz_abs
+        -: 1017:(
+        -: 1018:    mpz_t x,
+        -: 1019:    const mpz_t y
+        -: 1020:)
+        -: 1021:{
+    #####: 1022:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####: 1023:    mpz_abs (x, y) ;
+    #####: 1024:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1025:    return (SPEX_OK) ;
+        -: 1026:}
+        -: 1027:
+        -: 1028://------------------------------------------------------------------------------
+        -: 1029:// SPEX_mpz_cmp
+        -: 1030://------------------------------------------------------------------------------
+        -: 1031:
+        -: 1032:/* Purpose: Safely compare two mpz numbers,
+        -: 1033: * r > 0 if x > y, r = 0 if x = y, and r < 0 if x < y */
+        -: 1034:
+    #####: 1035:SPEX_info SPEX_mpz_cmp
+        -: 1036:(
+        -: 1037:    int *r,
+        -: 1038:    const mpz_t x,
+        -: 1039:    const mpz_t y
+        -: 1040:)
+        -: 1041:{
+    #####: 1042:    SPEX_GMP_WRAPPER_START ;
+    #####: 1043:    *r = mpz_cmp (x, y) ;
+    #####: 1044:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1045:    return (SPEX_OK) ;
+        -: 1046:}
+        -: 1047:
+        -: 1048://------------------------------------------------------------------------------
+        -: 1049:// SPEX_mpz_cmpabs
+        -: 1050://------------------------------------------------------------------------------
+        -: 1051:
+        -: 1052:/* Purpose: Safely compare the absolute value of two mpz numbers,
+        -: 1053: * r > 0 if |x| > |y|, r = 0 if |x| = |y|, and r < 0 if |x| < |y| */
+        -: 1054:
+    #####: 1055:SPEX_info SPEX_mpz_cmpabs
+        -: 1056:(
+        -: 1057:    int *r,
+        -: 1058:    const mpz_t x,
+        -: 1059:    const mpz_t y
+        -: 1060:)
+        -: 1061:{
+    #####: 1062:    SPEX_GMP_WRAPPER_START ;
+    #####: 1063:    *r = mpz_cmpabs (x, y) ;
+    #####: 1064:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1065:    return (SPEX_OK) ;
+        -: 1066:}
+        -: 1067:
+        -: 1068://------------------------------------------------------------------------------
+        -: 1069:// SPEX_mpz_cmp_ui
+        -: 1070://------------------------------------------------------------------------------
+        -: 1071:
+        -: 1072:/* Purpose: Safely compare a mpz number with a uint64_t integer
+        -: 1073: * r > 0 if x > y, r = 0 if x = y, and r < 0 if x < y */
+    #####: 1074:SPEX_info SPEX_mpz_cmp_ui
+        -: 1075:(
+        -: 1076:    int *r,
+        -: 1077:    const mpz_t x,
+        -: 1078:    const uint64_t y
+        -: 1079:)
+        -: 1080:{
+    #####: 1081:    SPEX_GMP_WRAPPER_START ;
+    #####: 1082:    *r = mpz_cmp_ui (x, (unsigned long int) y) ;
+    #####: 1083:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1084:    return (SPEX_OK) ;
+        -: 1085:}
+        -: 1086:
+        -: 1087://------------------------------------------------------------------------------
+        -: 1088:// SPEX_mpz_sgn
+        -: 1089://------------------------------------------------------------------------------
+        -: 1090:
+        -: 1091:/* Purpose: Safely set sgn = 0 if x = 0, otherwise, sgn = x/|x| */
+        -: 1092:
+    #####: 1093:SPEX_info SPEX_mpz_sgn
+        -: 1094:(
+        -: 1095:    int *sgn,
+        -: 1096:    const mpz_t x
+        -: 1097:)
+        -: 1098:{
+    #####: 1099:    SPEX_GMP_WRAPPER_START ;
+    #####: 1100:    *sgn = mpz_sgn (x) ;
+    #####: 1101:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1102:    return (SPEX_OK) ;
+        -: 1103:}
+        -: 1104:
+        -: 1105://------------------------------------------------------------------------------
+        -: 1106:// SPEX_mpz_sizeinbase
+        -: 1107://------------------------------------------------------------------------------
+        -: 1108:
+        -: 1109:/* Purpose: Safely return the size of x measured in number of digits
+        -: 1110: * in the given base */
+    #####: 1111:SPEX_info SPEX_mpz_sizeinbase
+        -: 1112:(
+        -: 1113:    size_t *size,
+        -: 1114:    const mpz_t x,
+        -: 1115:    int64_t base
+        -: 1116:)
+        -: 1117:{
+    #####: 1118:    SPEX_GMP_WRAPPER_START ;
+    #####: 1119:    *size = mpz_sizeinbase (x, (int) base) ;
+    #####: 1120:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1121:    return (SPEX_OK) ;
+        -: 1122:}
+        -: 1123:
+        -: 1124://------------------------------------------------------------------------------
+        -: 1125://------------------------------------------------------------------------------
+        -: 1126://-------------------------Rational  (mpq type) functions------------------------
+        -: 1127://------------------------------------------------------------------------------
+        -: 1128://------------------------------------------------------------------------------
+        -: 1129:
+        -: 1130://------------------------------------------------------------------------------
+        -: 1131:// SPEX_mpq_init
+        -: 1132://------------------------------------------------------------------------------
+        -: 1133:
+        -: 1134:/* Purpose: Safely initialize an mpq_t number */
+        -: 1135:
+    #####: 1136:SPEX_info SPEX_mpq_init
+        -: 1137:(
+        -: 1138:    mpq_t x
+        -: 1139:)
+        -: 1140:{
+    #####: 1141:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1142:    mpq_init (x) ;
+    #####: 1143:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1144:    return (SPEX_OK) ;
+        -: 1145:}
+        -: 1146:
+        -: 1147://------------------------------------------------------------------------------
+        -: 1148:// SPEX_mpq_set
+        -: 1149://------------------------------------------------------------------------------
+        -: 1150:
+        -: 1151:/* Purpose: Safely set an mpq number = to an mpq number, i.e., x = y */
+        -: 1152:
+    #####: 1153:SPEX_info SPEX_mpq_set
+        -: 1154:(
+        -: 1155:    mpq_t x,
+        -: 1156:    const mpq_t y
+        -: 1157:)
+        -: 1158:{
+    #####: 1159:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1160:    mpq_set (x, y) ;
+    #####: 1161:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1162:    return (SPEX_OK) ;
+        -: 1163:}
+        -: 1164:
+        -: 1165://------------------------------------------------------------------------------
+        -: 1166:// SPEX_mpq_set_z
+        -: 1167://------------------------------------------------------------------------------
+        -: 1168:
+        -: 1169:/* Purpose: Safely set an mpq number = an mpz number. i.e., x = y */
+        -: 1170:
+    #####: 1171:SPEX_info SPEX_mpq_set_z
+        -: 1172:(
+        -: 1173:    mpq_t x,
+        -: 1174:    const mpz_t y
+        -: 1175:)
+        -: 1176:{
+    #####: 1177:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1178:    mpq_set_z (x, y) ;
+    #####: 1179:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1180:    return (SPEX_OK) ;
+        -: 1181:}
+        -: 1182:
+        -: 1183://------------------------------------------------------------------------------
+        -: 1184:// SPEX_mpq_canonicalize
+        -: 1185://------------------------------------------------------------------------------
+        -: 1186:
+        -: 1187:/* Purpose: Safely set an mpq number in canonical form */
+        -: 1188:
+    #####: 1189:SPEX_info SPEX_mpq_canonicalize
+        -: 1190:(
+        -: 1191:    mpq_t x
+        -: 1192:)
+        -: 1193:{
+    #####: 1194:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1195:    mpq_canonicalize (x) ;
+    #####: 1196:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1197:    return (SPEX_OK) ;
+        -: 1198:}
+        -: 1199:
+        -: 1200://------------------------------------------------------------------------------
+        -: 1201:// SPEX_mpq_set_d
+        -: 1202://------------------------------------------------------------------------------
+        -: 1203:
+        -: 1204:/* Purpose: Safely set an mpq number = a double */
+        -: 1205:
+    #####: 1206:SPEX_info SPEX_mpq_set_d
+        -: 1207:(
+        -: 1208:    mpq_t x,
+        -: 1209:    const double y
+        -: 1210:)
+        -: 1211:{
+    #####: 1212:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1213:    mpq_set_d (x, y) ;
+    #####: 1214:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1215:    return (SPEX_OK) ;
+        -: 1216:}
+        -: 1217:
+        -: 1218://------------------------------------------------------------------------------
+        -: 1219:// SPEX_mpq_set_ui
+        -: 1220://------------------------------------------------------------------------------
+        -: 1221:
+        -: 1222:/* Purpose: Safely set an mpq number as the fraction of two
+        -: 1223: * unsigned ints. i.e., x = y / z
+        -: 1224: */
+        -: 1225:
+    #####: 1226:SPEX_info SPEX_mpq_set_ui
+        -: 1227:(
+        -: 1228:    mpq_t x,
+        -: 1229:    const uint64_t y,
+        -: 1230:    const uint64_t z
+        -: 1231:)
+        -: 1232:{
+    #####: 1233:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1234:    mpq_set_ui (x, (unsigned long int) y, (unsigned long int) z) ;
+    #####: 1235:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1236:    return (SPEX_OK) ;
+        -: 1237:}
+        -: 1238:
+        -: 1239://------------------------------------------------------------------------------
+        -: 1240:// SPEX_mpq_set_si
+        -: 1241://------------------------------------------------------------------------------
+        -: 1242:
+        -: 1243:/* Purpose: Safely set an mpq number = an int64_t */
+        -: 1244:
+    #####: 1245:SPEX_info SPEX_mpq_set_si
+        -: 1246:(
+        -: 1247:    mpq_t x,
+        -: 1248:    const int64_t y,
+        -: 1249:    const uint64_t z
+        -: 1250:)
+        -: 1251:{
+    #####: 1252:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1253:    mpq_set_si (x, (signed long int) y, (unsigned long int) x) ;
+    #####: 1254:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1255:    return (SPEX_OK) ;
+        -: 1256:}
+        -: 1257:
+        -: 1258://------------------------------------------------------------------------------
+        -: 1259:// SPEX_mpq_set_num
+        -: 1260://------------------------------------------------------------------------------
+        -: 1261:
+        -: 1262:/* Purpose: Safely set the numerator of an mpq number */
+        -: 1263:
+    #####: 1264:SPEX_info SPEX_mpq_set_num
+        -: 1265:(
+        -: 1266:    mpq_t x,
+        -: 1267:    const mpz_t y
+        -: 1268:)
+        -: 1269:{
+    #####: 1270:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1271:    mpq_set_num (x, y) ;
+    #####: 1272:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1273:    return (SPEX_OK) ;
+        -: 1274:}
+        -: 1275:
+        -: 1276://------------------------------------------------------------------------------
+        -: 1277:// SPEX_mpq_set_den
+        -: 1278://------------------------------------------------------------------------------
+        -: 1279:
+        -: 1280:/* Purpose: Safely set the denominator of an mpq number */
+        -: 1281:
+    #####: 1282:SPEX_info SPEX_mpq_set_den
+        -: 1283:(
+        -: 1284:    mpq_t x,
+        -: 1285:    const mpz_t y
+        -: 1286:)
+        -: 1287:{
+    #####: 1288:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1289:    mpq_set_den (x, y) ;
+    #####: 1290:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1291:    return (SPEX_OK) ;
+        -: 1292:}
+        -: 1293:
+        -: 1294://------------------------------------------------------------------------------
+        -: 1295:// SPEX_mpq_get_den
+        -: 1296://------------------------------------------------------------------------------
+        -: 1297:
+        -: 1298:/* Purpose: Safely set an mpz number = denominator of an mpq number */
+        -: 1299:
+    #####: 1300:SPEX_info SPEX_mpq_get_den
+        -: 1301:(
+        -: 1302:    mpz_t x,
+        -: 1303:    const mpq_t y
+        -: 1304:)
+        -: 1305:{
+    #####: 1306:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####: 1307:    mpq_get_den (x, y) ;
+    #####: 1308:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1309:    return (SPEX_OK) ;
+        -: 1310:}
+        -: 1311:
+        -: 1312://------------------------------------------------------------------------------
+        -: 1313:// SPEX_mpq_get_d
+        -: 1314://------------------------------------------------------------------------------
+        -: 1315:
+        -: 1316:/* Purpose: Safely set a double = a mpq number*/
+        -: 1317:
+    #####: 1318:SPEX_info SPEX_mpq_get_d
+        -: 1319:(
+        -: 1320:    double *x,
+        -: 1321:    const mpq_t y
+        -: 1322:)
+        -: 1323:{
+    #####: 1324:    SPEX_GMP_WRAPPER_START ;
+    #####: 1325:    *x = mpq_get_d (y) ;
+    #####: 1326:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1327:    return (SPEX_OK) ;
+        -: 1328:}
+        -: 1329:
+        -: 1330://------------------------------------------------------------------------------
+        -: 1331:// SPEX_mpq_swap
+        -: 1332://------------------------------------------------------------------------------
+        -: 1333:
+        -: 1334:/* Purpose: Safely swap the values x and y efficiently */
+        -: 1335:
+    #####: 1336:SPEX_info SPEX_mpq_swap
+        -: 1337:(
+        -: 1338:    mpq_t x,
+        -: 1339:    mpq_t y
+        -: 1340:)
+        -: 1341:{
+    #####: 1342:    SPEX_GMP_WRAPPER_START ;
+    #####: 1343:    mpq_swap (x, y) ;
+    #####: 1344:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1345:    return (SPEX_OK) ;
+        -: 1346:}
+        -: 1347:
+        -: 1348:
+        -: 1349:
+        -: 1350://------------------------------------------------------------------------------
+        -: 1351:// SPEX_mpq_neg
+        -: 1352://------------------------------------------------------------------------------
+        -: 1353:
+        -: 1354:/* Purpose: Safely set an mpq number x = -y */
+        -: 1355:
+    #####: 1356:SPEX_info SPEX_mpq_neg
+        -: 1357:(
+        -: 1358:    mpq_t x,
+        -: 1359:    const mpq_t y
+        -: 1360:)
+        -: 1361:{
+    #####: 1362:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1363:    mpq_neg (x, y) ;
+    #####: 1364:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1365:    return (SPEX_OK) ;
+        -: 1366:}
+        -: 1367:
+        -: 1368://------------------------------------------------------------------------------
+        -: 1369:// SPEX_mpq_abs
+        -: 1370://------------------------------------------------------------------------------
+        -: 1371:
+        -: 1372:/* Purpose: Safely set an mpq number = absolute value of mpq */
+        -: 1373:
+    #####: 1374:SPEX_info SPEX_mpq_abs
+        -: 1375:(
+        -: 1376:    mpq_t x,
+        -: 1377:    const mpq_t y
+        -: 1378:)
+        -: 1379:{
+    #####: 1380:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1381:    mpq_abs (x, y) ;
+    #####: 1382:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1383:    return (SPEX_OK) ;
+        -: 1384:}
+        -: 1385:
+        -: 1386://------------------------------------------------------------------------------
+        -: 1387:// SPEX_mpq_add
+        -: 1388://------------------------------------------------------------------------------
+        -: 1389:
+        -: 1390:/* Purpose: Safely add two mpq numbers, i.e., x = y+z */
+        -: 1391:
+    #####: 1392:SPEX_info SPEX_mpq_add
+        -: 1393:(
+        -: 1394:    mpq_t x,
+        -: 1395:    const mpq_t y,
+        -: 1396:    const mpq_t z
+        -: 1397:)
+        -: 1398:{
+    #####: 1399:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1400:    mpq_add (x, y, z) ;
+    #####: 1401:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1402:    return (SPEX_OK) ;
+        -: 1403:}
+        -: 1404:
+        -: 1405://------------------------------------------------------------------------------
+        -: 1406:// SPEX_mpq_mul
+        -: 1407://------------------------------------------------------------------------------
+        -: 1408:
+        -: 1409:/* Purpose: Safely multiply two mpq numbers, i.e., x = y*z */
+    #####: 1410:SPEX_info SPEX_mpq_mul
+        -: 1411:(
+        -: 1412:    mpq_t x,
+        -: 1413:    const mpq_t y,
+        -: 1414:    const mpq_t z
+        -: 1415:)
+        -: 1416:{
+    #####: 1417:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1418:    mpq_mul (x, y, z) ;
+    #####: 1419:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1420:    return (SPEX_OK) ;
+        -: 1421:}
+        -: 1422:
+        -: 1423://------------------------------------------------------------------------------
+        -: 1424:// SPEX_mpq_div
+        -: 1425://------------------------------------------------------------------------------
+        -: 1426:
+        -: 1427:/* Purpose: Safely divide two mpq numbers, i.e., x = y/z */
+        -: 1428:
+    #####: 1429:SPEX_info SPEX_mpq_div
+        -: 1430:(
+        -: 1431:    mpq_t x,
+        -: 1432:    const mpq_t y,
+        -: 1433:    const mpq_t z
+        -: 1434:)
+        -: 1435:{
+    #####: 1436:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1437:    mpq_div (x, y, z) ;
+    #####: 1438:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1439:    return (SPEX_OK) ;
+        -: 1440:}
+        -: 1441:
+        -: 1442://------------------------------------------------------------------------------
+        -: 1443:// SPEX_mpq_cmp
+        -: 1444://------------------------------------------------------------------------------
+        -: 1445:
+        -: 1446:/* Purpose: Safely compare two mpq numbers,
+        -: 1447: * r > 0 if x > y, r = 0 if x = y, and r < 0 if x < y */
+        -: 1448:
+    #####: 1449:SPEX_info SPEX_mpq_cmp
+        -: 1450:(
+        -: 1451:    int *r,
+        -: 1452:    const mpq_t x,
+        -: 1453:    const mpq_t y
+        -: 1454:)
+        -: 1455:{
+    #####: 1456:    SPEX_GMP_WRAPPER_START ;
+    #####: 1457:    *r = mpq_cmp (x, y) ;
+    #####: 1458:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1459:    return (SPEX_OK) ;
+        -: 1460:}
+        -: 1461:
+        -: 1462://------------------------------------------------------------------------------
+        -: 1463:// SPEX_mpq_cmp_ui
+        -: 1464://------------------------------------------------------------------------------
+        -: 1465:
+        -: 1466:/* Purpose: Safely compare x and num/den. r > 0 if x > num/den,
+        -: 1467: * r = 0 if x = num/den, and r < 0 if x < num/den */
+        -: 1468:
+    #####: 1469:SPEX_info SPEX_mpq_cmp_ui
+        -: 1470:(
+        -: 1471:    int *r,
+        -: 1472:    const mpq_t x,
+        -: 1473:    const uint64_t num,
+        -: 1474:    const uint64_t den
+        -: 1475:)
+        -: 1476:{
+    #####: 1477:    SPEX_GMP_WRAPPER_START ;
+    #####: 1478:    *r = mpq_cmp_ui (x, (unsigned long int) num, (unsigned long int) den) ;
+    #####: 1479:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1480:    return (SPEX_OK) ;
+        -: 1481:}
+        -: 1482:
+        -: 1483://------------------------------------------------------------------------------
+        -: 1484:// SPEX_mpq_equal
+        -: 1485://------------------------------------------------------------------------------
+        -: 1486:
+        -: 1487:/* Purpose: Safely check if two mpq numbers equal,
+        -: 1488: * r = 0 (r = false) if x != y, r != 0 (r = true) if x = y */
+        -: 1489:
+    #####: 1490:SPEX_info SPEX_mpq_equal
+        -: 1491:(
+        -: 1492:    int *r,
+        -: 1493:    const mpq_t x,
+        -: 1494:    const mpq_t y
+        -: 1495:)
+        -: 1496:{
+    #####: 1497:    SPEX_GMP_WRAPPER_START ;
+    #####: 1498:    *r = mpq_equal (x, y) ;
+    #####: 1499:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1500:    return (SPEX_OK) ;
+        -: 1501:}
+        -: 1502:
+        -: 1503://------------------------------------------------------------------------------
+        -: 1504:// SPEX_mpq_sgn
+        -: 1505://------------------------------------------------------------------------------
+        -: 1506:
+        -: 1507:/* Purpose: Safely set sgn = 0 if x = 0, otherwise, sgn = x/|x| */
+        -: 1508:
+    #####: 1509:SPEX_info SPEX_mpq_sgn
+        -: 1510:(
+        -: 1511:    int *sgn,
+        -: 1512:    const mpq_t x
+        -: 1513:)
+        -: 1514:{
+    #####: 1515:    SPEX_GMP_WRAPPER_START ;
+    #####: 1516:    *sgn = mpq_sgn (x) ;
+    #####: 1517:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1518:    return (SPEX_OK) ;
+        -: 1519:}
+        -: 1520:
+        -: 1521://------------------------------------------------------------------------------
+        -: 1522://------------------------------------------------------------------------------
+        -: 1523://-------------------------Floating Point (mpfr type) functions-----------------
+        -: 1524://------------------------------------------------------------------------------
+        -: 1525://------------------------------------------------------------------------------
+        -: 1526:
+        -: 1527://------------------------------------------------------------------------------
+        -: 1528:// SPEX_mpfr_init2
+        -: 1529://------------------------------------------------------------------------------
+        -: 1530:
+        -: 1531:/* Purpose: Safely initialize an mpfr_t number */
+        -: 1532:
+    #####: 1533:SPEX_info SPEX_mpfr_init2
+        -: 1534:(
+        -: 1535:    mpfr_t x,       // Floating point number to initialize
+        -: 1536:    uint64_t size    // # of bits in x
+        -: 1537:)
+        -: 1538:{
+    #####: 1539:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1540:    mpfr_init2 (x, (unsigned long int) size) ;
+    #####: 1541:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1542:    return (SPEX_OK) ;
+        -: 1543:}
+        -: 1544:
+        -: 1545://------------------------------------------------------------------------------
+        -: 1546:// SPEX_mpfr_set
+        -: 1547://------------------------------------------------------------------------------
+        -: 1548:
+        -: 1549:/* Purpose: Safely set an mpfr number = to an mpfr number, i.e., x = y */
+        -: 1550:
+    #####: 1551:SPEX_info SPEX_mpfr_set
+        -: 1552:(
+        -: 1553:    mpfr_t x,
+        -: 1554:    const mpfr_t y,
+        -: 1555:    const mpfr_rnd_t rnd
+        -: 1556:)
+        -: 1557:{
+    #####: 1558:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1559:    mpfr_set (x, y, rnd) ;
+    #####: 1560:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1561:    return (SPEX_OK) ;
+        -: 1562:}
+        -: 1563:
+        -: 1564://------------------------------------------------------------------------------
+        -: 1565:// SPEX_mpfr_set_d
+        -: 1566://------------------------------------------------------------------------------
+        -: 1567:
+        -: 1568:/* Purpose: Safely set an mpfr number = to a double, i.e., x = y */
+        -: 1569:
+    #####: 1570:SPEX_info SPEX_mpfr_set_d
+        -: 1571:(
+        -: 1572:    mpfr_t x,
+        -: 1573:    const double y,
+        -: 1574:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1575:)
+        -: 1576:{
+    #####: 1577:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1578:    mpfr_set_d (x, y, rnd) ;
+    #####: 1579:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1580:    return (SPEX_OK) ;
+        -: 1581:}
+        -: 1582:
+        -: 1583:
+        -: 1584://------------------------------------------------------------------------------
+        -: 1585:// SPEX_mpfr_set_si
+        -: 1586://------------------------------------------------------------------------------
+        -: 1587:
+        -: 1588:/* Purpose: Safely set an mpfr number = to a signed int, i.e., x = y */
+        -: 1589:
+    #####: 1590:SPEX_info SPEX_mpfr_set_si
+        -: 1591:(
+        -: 1592:    mpfr_t x,
+        -: 1593:    int64_t y,
+        -: 1594:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1595:)
+        -: 1596:{
+    #####: 1597:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1598:    mpfr_set_si (x, y, rnd) ;
+    #####: 1599:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1600:    return (SPEX_OK) ;
+        -: 1601:}
+        -: 1602:
+        -: 1603://------------------------------------------------------------------------------
+        -: 1604:// SPEX_mpfr_set_q
+        -: 1605://------------------------------------------------------------------------------
+        -: 1606:
+        -: 1607:/* Purpose: Safely set an mpfr number = to an mpq number */
+        -: 1608:
+    #####: 1609:SPEX_info SPEX_mpfr_set_q
+        -: 1610:(
+        -: 1611:    mpfr_t x,
+        -: 1612:    const mpq_t y,
+        -: 1613:    const mpfr_rnd_t rnd
+        -: 1614:)
+        -: 1615:{
+    #####: 1616:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1617:    mpfr_set_q (x, y, rnd) ;
+    #####: 1618:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1619:    return (SPEX_OK) ;
+        -: 1620:}
+        -: 1621:
+        -: 1622://------------------------------------------------------------------------------
+        -: 1623:// SPEX_mpfr_set_z
+        -: 1624://------------------------------------------------------------------------------
+        -: 1625:
+        -: 1626:/* Purpose: Safely set an mpfr number = to an mpz number */
+        -: 1627:
+    #####: 1628:SPEX_info SPEX_mpfr_set_z
+        -: 1629:(
+        -: 1630:    mpfr_t x,
+        -: 1631:    const mpz_t y,
+        -: 1632:    const mpfr_rnd_t rnd
+        -: 1633:)
+        -: 1634:{
+    #####: 1635:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1636:    mpfr_set_z (x, y, rnd) ;
+    #####: 1637:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1638:    return (SPEX_OK) ;
+        -: 1639:}
+        -: 1640:
+        -: 1641://------------------------------------------------------------------------------
+        -: 1642:// SPEX_mpfr_get_z
+        -: 1643://------------------------------------------------------------------------------
+        -: 1644:
+        -: 1645:/* Purpose: Safely set an mpz number = to an mpfr number, i.e., x = y */
+        -: 1646:
+    #####: 1647:SPEX_info SPEX_mpfr_get_z
+        -: 1648:(
+        -: 1649:    mpz_t x,
+        -: 1650:    const mpfr_t y,
+        -: 1651:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1652:)
+        -: 1653:{
+    #####: 1654:    SPEX_GMPZ_WRAPPER_START (x) ;
+    #####: 1655:    mpfr_get_z (x, y, rnd) ;
+    #####: 1656:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1657:    return (SPEX_OK) ;
+        -: 1658:}
+        -: 1659:
+        -: 1660://------------------------------------------------------------------------------
+        -: 1661:// SPEX_mpfr_get_q
+        -: 1662://------------------------------------------------------------------------------
+        -: 1663:
+        -: 1664:/* Purpose: Safely set an mpq number = to an mpfr number, i.e., x = y */
+        -: 1665:
+    #####: 1666:SPEX_info SPEX_mpfr_get_q
+        -: 1667:(
+        -: 1668:    mpq_t x,
+        -: 1669:    const mpfr_t y,
+        -: 1670:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1671:)
+        -: 1672:{
+    #####: 1673:    SPEX_GMPQ_WRAPPER_START (x) ;
+    #####: 1674:    mpfr_get_q (x, y) ;
+    #####: 1675:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1676:    return (SPEX_OK) ;
+        -: 1677:}
+        -: 1678:
+        -: 1679://------------------------------------------------------------------------------
+        -: 1680:// SPEX_mpfr_get_d
+        -: 1681://------------------------------------------------------------------------------
+        -: 1682:
+        -: 1683:/* Purpose: Safely set a double = to a mpfr number, i.e., x = y */
+        -: 1684:
+    #####: 1685:SPEX_info SPEX_mpfr_get_d
+        -: 1686:(
+        -: 1687:    double *x,
+        -: 1688:    const mpfr_t y,
+        -: 1689:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1690:)
+        -: 1691:{
+    #####: 1692:    SPEX_GMP_WRAPPER_START ;
+    #####: 1693:    *x = mpfr_get_d (y, rnd) ;
+    #####: 1694:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1695:    return (SPEX_OK) ;
+        -: 1696:}
+        -: 1697:
+        -: 1698://------------------------------------------------------------------------------
+        -: 1699:// SPEX_mpfr_get_si
+        -: 1700://------------------------------------------------------------------------------
+        -: 1701:
+        -: 1702:/* Purpose: Safely set a signed int = to a mpfr number, i.e., x = y */
+        -: 1703:
+    #####: 1704:SPEX_info SPEX_mpfr_get_si
+        -: 1705:(
+        -: 1706:    int64_t *x,
+        -: 1707:    const mpfr_t y,
+        -: 1708:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1709:)
+        -: 1710:{
+    #####: 1711:    SPEX_GMP_WRAPPER_START ;
+    #####: 1712:    *x = mpfr_get_si (y, rnd) ;
+    #####: 1713:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1714:    return (SPEX_OK) ;
+        -: 1715:}
+        -: 1716:
+        -: 1717://------------------------------------------------------------------------------
+        -: 1718:// SPEX_mpfr_mul
+        -: 1719://------------------------------------------------------------------------------
+        -: 1720:
+        -: 1721:/* Purpose: Safely multiply mpfr numbers, x = y*z */
+        -: 1722:
+    #####: 1723:SPEX_info SPEX_mpfr_mul
+        -: 1724:(
+        -: 1725:    mpfr_t x,
+        -: 1726:    const mpfr_t y,
+        -: 1727:    const mpfr_t z,
+        -: 1728:    const mpfr_rnd_t rnd  // MPFR rounding mode
+        -: 1729:)
+        -: 1730:{
+    #####: 1731:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1732:    mpfr_mul (x, y, z, rnd) ;
+    #####: 1733:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1734:    return (SPEX_OK) ;
+        -: 1735:}
+        -: 1736:
+        -: 1737://------------------------------------------------------------------------------
+        -: 1738:// SPEX_mpfr_mul_d
+        -: 1739://------------------------------------------------------------------------------
+        -: 1740:
+        -: 1741:/* Purpose: Safely set an mpfr number = to a product of an mpfr_t and double,
+        -: 1742: * i.e., x = y*z
+        -: 1743: */
+        -: 1744:
+    #####: 1745:SPEX_info SPEX_mpfr_mul_d
+        -: 1746:(
+        -: 1747:    mpfr_t x,
+        -: 1748:    const mpfr_t y,
+        -: 1749:    const double z,
+        -: 1750:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1751:)
+        -: 1752:{
+    #####: 1753:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1754:    mpfr_mul_d (x, y, z, rnd) ;
+    #####: 1755:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1756:    return (SPEX_OK) ;
+        -: 1757:}
+        -: 1758:
+        -: 1759://------------------------------------------------------------------------------
+        -: 1760:// SPEX_mpfr_div_d
+        -: 1761://------------------------------------------------------------------------------
+        -: 1762:
+        -: 1763:/* Purpose: Safely set a mpfr number = a mpfr number divided by a double,
+        -: 1764: * i.e., x = y/z
+        -: 1765: */
+        -: 1766:
+    #####: 1767:SPEX_info SPEX_mpfr_div_d
+        -: 1768:(
+        -: 1769:    mpfr_t x,
+        -: 1770:    const mpfr_t y,
+        -: 1771:    const double z,
+        -: 1772:    const mpfr_rnd_t rnd  // MPFR rounding scheme used
+        -: 1773:)
+        -: 1774:{
+    #####: 1775:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1776:    mpfr_div_d (x, y, z, rnd) ;
+    #####: 1777:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1778:    return (SPEX_OK) ;
+        -: 1779:}
+        -: 1780:
+        -: 1781://------------------------------------------------------------------------------
+        -: 1782:// SPEX_mpfr_ui_pow_ui
+        -: 1783://------------------------------------------------------------------------------
+        -: 1784:
+        -: 1785:/* Purpose: Safely set an mpfr number = power of two ints, i.e.,
+        -: 1786: * x = y^z
+        -: 1787: */
+        -: 1788:
+    #####: 1789:SPEX_info SPEX_mpfr_ui_pow_ui
+        -: 1790:(
+        -: 1791:    mpfr_t x,
+        -: 1792:    const uint64_t y,
+        -: 1793:    const uint64_t z,
+        -: 1794:    const mpfr_rnd_t rnd  // MPFR rounding mode
+        -: 1795:)
+        -: 1796:{
+    #####: 1797:    SPEX_GMPFR_WRAPPER_START (x) ;
+    #####: 1798:    mpfr_ui_pow_ui (x, (unsigned long int) y, (unsigned long int) z, rnd) ;
+    #####: 1799:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1800:    return (SPEX_OK) ;
+        -: 1801:}
+        -: 1802:
+        -: 1803://------------------------------------------------------------------------------
+        -: 1804:// SPEX_mpfr_log2
+        -: 1805://------------------------------------------------------------------------------
+        -: 1806:
+        -: 1807:/* Purpose: Safely take the log2 of an mpfr number */
+        -: 1808:
+        -: 1809:#if 0
+        -: 1810:/* This function is currently unused, but kept here for future reference. */
+        -: 1811:
+        -: 1812:SPEX_info SPEX_mpfr_log2
+        -: 1813:(
+        -: 1814:    mpfr_t x,
+        -: 1815:    const mpfr_t y,
+        -: 1816:    const mpfr_rnd_t rnd
+        -: 1817:)
+        -: 1818:{
+        -: 1819:    SPEX_GMPFR_WRAPPER_START (x) ;
+        -: 1820:    mpfr_log2 (x, y, rnd) ;
+        -: 1821:    SPEX_GMP_WRAPPER_FINISH ;
+        -: 1822:    return (SPEX_OK) ;
+        -: 1823:}
+        -: 1824:
+        -: 1825:#endif
+        -: 1826:
+        -: 1827://------------------------------------------------------------------------------
+        -: 1828:// SPEX_mpfr_sgn
+        -: 1829://------------------------------------------------------------------------------
+        -: 1830:
+        -: 1831:/* Purpose: Safely set sgn = 0 if x = 0, otherwise, sgn = x/|x| */
+        -: 1832:
+    #####: 1833:SPEX_info SPEX_mpfr_sgn
+        -: 1834:(
+        -: 1835:    int *sgn,
+        -: 1836:    const mpfr_t x
+        -: 1837:)
+        -: 1838:{
+    #####: 1839:    SPEX_GMP_WRAPPER_START ;
+    #####: 1840:    *sgn = mpfr_sgn (x) ;
+    #####: 1841:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1842:    return (SPEX_OK) ;
+        -: 1843:}
+        -: 1844:
+        -: 1845://------------------------------------------------------------------------------
+        -: 1846:// SPEX_mpfr_free_cache
+        -: 1847://------------------------------------------------------------------------------
+        -: 1848:
+        -: 1849:/* Purpose: Safely free all caches and pools used by MPFR internally */
+        -: 1850:
+    #####: 1851:SPEX_info SPEX_mpfr_free_cache ( void )
+        -: 1852:{
+    #####: 1853:    SPEX_GMP_WRAPPER_START ;
+    #####: 1854:    mpfr_free_cache ( ) ;
+    #####: 1855:    SPEX_GMP_WRAPPER_FINISH ;
+    #####: 1856:    return (SPEX_OK) ;
+        -: 1857:}
+        -: 1858:

@@ -1,0 +1,51 @@
+        -:    0:Source:SPEX_create_default_options.c
+        -:    0:Graph:SPEX_create_default_options.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/SPEX_create_default_options: set defaults
+        -:    3://------------------------------------------------------------------------------
+        -:    4:
+        -:    5:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    6:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    7:// SPEX_CHOLMOD/License for the license.
+        -:    8:
+        -:    9://------------------------------------------------------------------------------
+        -:   10:
+        -:   11:/* Purpose: Create and return SPEX_options pointer with default parameters
+        -:   12: * upon successful allocation, which are defined in spex_internal.h
+        -:   13: */
+        -:   14:
+        -:   15:#include "spex_internal.h"
+        -:   16:
+    #####:   17:SPEX_options* SPEX_create_default_options ( void )
+        -:   18:{
+        -:   19:
+    #####:   20:    if (!spex_initialized ( )) return (NULL) ;
+        -:   21:
+        -:   22:    //--------------------------------------------------------------------------
+        -:   23:    // allocate the option struct
+        -:   24:    //--------------------------------------------------------------------------
+        -:   25:
+    #####:   26:    SPEX_options* option = SPEX_malloc(sizeof(SPEX_options)) ;
+    #####:   27:    if (!option)
+        -:   28:    {
+        -:   29:        // out of memory
+    #####:   30:        return (NULL) ;
+        -:   31:    }
+        -:   32:
+        -:   33:    //--------------------------------------------------------------------------
+        -:   34:    // set defaults
+        -:   35:    //--------------------------------------------------------------------------
+        -:   36:
+    #####:   37:    option->print_level = SPEX_DEFAULT_PRINT_LEVEL ;
+    #####:   38:    option->prec        = SPEX_DEFAULT_PRECISION ;
+    #####:   39:    option->round       = SPEX_DEFAULT_MPFR_ROUND ;
+        -:   40:
+        -:   41:    //--------------------------------------------------------------------------
+        -:   42:    // return result
+        -:   43:    //--------------------------------------------------------------------------
+        -:   44:
+    #####:   45:    return option ;
+        -:   46:}
+        -:   47:

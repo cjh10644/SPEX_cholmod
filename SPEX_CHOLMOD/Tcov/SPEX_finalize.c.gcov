@@ -1,0 +1,32 @@
+        -:    0:Source:SPEX_finalize.c
+        -:    0:Graph:SPEX_finalize.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLDMOD/SPEX_finalize: finalize SPEX_CHOLMOD
+        -:    3://------------------------------------------------------------------------------
+        -:    4:
+        -:    5:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, 
+        -:    6:// Erick Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See 
+        -:    7:// SPEX_CHOLMOD/License for the license. 
+        -:    8:
+        -:    9://------------------------------------------------------------------------------
+        -:   10:
+        -:   11:// SPEX_finalize frees the working environment for SPEX LU library.
+        -:   12:
+        -:   13:#include "spex_internal.h"
+        -:   14:
+    #####:   15:SPEX_info SPEX_finalize
+        -:   16:(
+        -:   17:    void
+        -:   18:)
+        -:   19:{
+    #####:   20:    if (!spex_initialized ( )) return (SPEX_PANIC) ;
+        -:   21:
+    #####:   22:    SPEX_mpfr_free_cache ( ) ;    // Free mpfr internal cache
+    #####:   23:    spex_gmp_finalize ( ) ;       // Reset GMP memory variables
+        -:   24:
+    #####:   25:    spex_set_initialized (false) ;
+    #####:   26:    return (SPEX_OK) ;
+        -:   27:}
+        -:   28:

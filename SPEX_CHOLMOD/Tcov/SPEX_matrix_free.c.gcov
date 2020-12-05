@@ -1,0 +1,33 @@
+        -:    0:Source:SPEX_matrix_free.c
+        -:    0:Graph:SPEX_matrix_free.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/SPEX_matrix_free.c: free a matrix.
+        -:    3://------------------------------------------------------------------------------
+        -:    4:
+        -:    5:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    6:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    7:// SPEX_CHOLMOD/License for the license.
+        -:    8:
+        -:    9://------------------------------------------------------------------------------
+        -:   10:
+        -:   11:// Purpose: This function is called to free a matrix.
+        -:   12:
+        -:   13:
+        -:   14:#include "spex_internal.h"
+        -:   15:
+    #####:   16:void SPEX_matrix_free
+        -:   17:(
+        -:   18:    SPEX_matrix **A  // matrix to be deleted
+        -:   19:)
+        -:   20:{
+    #####:   21:    if(A == NULL || (*A) == NULL) {return;}
+    #####:   22:    for (int64_t i = 0; i < (*A)->n; i++)
+        -:   23:    {
+    #####:   24:        SPEX_vector_free(&((*A)->v[i]));
+        -:   25:    }
+    #####:   26:    SPEX_MPQ_CLEAR((*A)->scale);
+    #####:   27:    SPEX_FREE(*A);
+        -:   28:}
+        -:   29:

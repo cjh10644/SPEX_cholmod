@@ -1,0 +1,63 @@
+        -:    0:Source:SPEX_vector_realloc.c
+        -:    0:Graph:SPEX_vector_realloc.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/SPEX_vector_realloc: realloc the space for a SPEX_vector object
+        -:    3:// to given new size.
+        -:    4://------------------------------------------------------------------------------
+        -:    5:
+        -:    6:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    7:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    8:// SPEX_CHOLMOD/License for the license.
+        -:    9:
+        -:   10://------------------------------------------------------------------------------
+        -:   11:
+        -:   12:/* Purpose: This function realloc a SPEX_vector to given size. It will
+        -:   13: * initialize/allocate for the mpz entries.
+        -:   14: */
+        -:   15:
+        -:   16:#include "spex_internal.h"
+        -:   17:
+    #####:   18:SPEX_info SPEX_vector_realloc
+        -:   19:(
+        -:   20:    SPEX_vector* v, // the vector to be expanded
+        -:   21:    const int64_t new_size// desired new size for v
+        -:   22:)
+        -:   23:{
+    #####:   24:    if (v->nzmax >= new_size) {return SPEX_OK;}
+        -:   25:    SPEX_info info;
+    #####:   26:    int64_t old_size = v->nzmax ;
+        -:   27:
+        -:   28:    //--------------------------------------------------------------------------
+        -:   29:    // expand the size of v->x and v->i to new_size
+        -:   30:    //--------------------------------------------------------------------------
+        -:   31:
+        -:   32:    bool okx, oki ;
+    #####:   33:    v->x = (mpz_t *)
+    #####:   34:        SPEX_realloc (new_size, old_size, sizeof (mpz_t), v->x, &okx) ;
+    #####:   35:    v->i = (int64_t *)
+    #####:   36:        SPEX_realloc (new_size, old_size, sizeof (int64_t), v->i, &oki) ;
+    #####:   37:    if (!oki || !okx)
+        -:   38:    {
+    #####:   39:        return (SPEX_OUT_OF_MEMORY) ;
+        -:   40:    }
+        -:   41:
+    #####:   42:    v->nzmax = new_size ;
+        -:   43:
+        -:   44:    //--------------------------------------------------------------------------
+        -:   45:    // set newly allocated mpz entries to NULL and initialize if required
+        -:   46:    //--------------------------------------------------------------------------
+        -:   47:
+    #####:   48:    for (int64_t p = old_size ; p < new_size ; p++)
+        -:   49:    {
+    #####:   50:        SPEX_MPZ_SET_NULL (v->x[p]) ;
+        -:   51:    }
+        -:   52:
+    #####:   53:    for (int64_t p = old_size ; p < new_size ; p++)
+        -:   54:    {
+    #####:   55:        SPEX_CHECK(SPEX_mpz_init (v->x[p])) ;
+        -:   56:    }
+        -:   57:
+    #####:   58:    return (SPEX_OK) ;
+        -:   59:}

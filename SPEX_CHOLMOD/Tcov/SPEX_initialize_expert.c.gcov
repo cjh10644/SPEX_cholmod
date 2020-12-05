@@ -1,0 +1,57 @@
+        -:    0:Source:SPEX_initialize_expert.c
+        -:    0:Graph:SPEX_initialize_expert.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/SPEX_initialize_expert: intialize SPEX_CHOLMOD memory
+        -:    3:// functions for GMP
+        -:    4://------------------------------------------------------------------------------
+        -:    5:
+        -:    6:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    7:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    8:// SPEX_CHOLMOD/License for the license.
+        -:    9:
+        -:   10://------------------------------------------------------------------------------
+        -:   11:
+        -:   12:// SPEX_initialize_expert initializes the working environment for SPEX_CHOLMOD
+        -:   13:// with custom memory functions that are used for SPEX_CHOLMOD and GMP.
+        -:   14:
+        -:   15:// The four inputs to this function are pointers to four functions with the
+        -:   16:// same signatures as the ANSI C malloc, calloc, realloc, and free functions.
+        -:   17:// That is:
+        -:   18:
+        -:   19://     #include <stdlib.h>
+        -:   20://     void *malloc (size_t size) ;
+        -:   21://     void *calloc (size_t nmemb, size_t size) ;
+        -:   22://     void *realloc (void *ptr, size_t size) ;
+        -:   23://     void free (void *ptr) ;
+        -:   24:
+        -:   25:#include "spex_internal.h"
+        -:   26:
+    #####:   27:SPEX_info SPEX_initialize_expert
+        -:   28:(
+        -:   29:    void* (*MyMalloc) (size_t),             // user-defined malloc
+        -:   30:    void* (*MyCalloc) (size_t, size_t),     // user-defined calloc
+        -:   31:    void* (*MyRealloc) (void *, size_t),    // user-defined realloc
+        -:   32:    void  (*MyFree) (void *)                // user-defined free
+        -:   33:)
+        -:   34:{
+        -:   35:
+    #####:   36:    if (spex_initialized ( )) return (SPEX_PANIC) ;
+        -:   37:
+        -:   38:    //--------------------------------------------------------------------------
+        -:   39:    // define the malloc/calloc/realloc/free functions 
+        -:   40:    //--------------------------------------------------------------------------
+        -:   41:
+    #####:   42:    SuiteSparse_config.malloc_func  = MyMalloc ;
+    #####:   43:    SuiteSparse_config.calloc_func  = MyCalloc ;
+    #####:   44:    SuiteSparse_config.realloc_func = MyRealloc ;
+    #####:   45:    SuiteSparse_config.free_func    = MyFree ;
+        -:   46:
+        -:   47:    //--------------------------------------------------------------------------
+        -:   48:    // Set GMP memory functions
+        -:   49:    //--------------------------------------------------------------------------
+        -:   50:
+    #####:   51:    return (SPEX_initialize ( )) ;
+        -:   52:}
+        -:   53:

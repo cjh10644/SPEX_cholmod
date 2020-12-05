@@ -1,0 +1,39 @@
+        -:    0:Source:spex_delete_mpz_array.c
+        -:    0:Graph:spex_delete_mpz_array.gcno
+        -:    0:Data:-
+        -:    0:Runs:0
+        -:    1://------------------------------------------------------------------------------
+        -:    2:// SPEX_CHOLMOD/spex_delete_mpz_array.c: clear the memory used for a mpz array
+        -:    3://------------------------------------------------------------------------------
+        -:    4:
+        -:    5:// SPEX_CHOLMOD: (c) 2020-2021, Jinhao Chen, Timothy A. Davis, Erick
+        -:    6:// Moreno-Centeno, Texas A&M University.  All Rights Reserved.  See
+        -:    7:// SPEX_CHOLMOD/License for the license.
+        -:    8:
+        -:    9://------------------------------------------------------------------------------
+        -:   10:
+        -:   11:/* Purpose: This function clears the memory used for an mpz vector of size n. 
+        -:   12: * Call this function for all mpz vectors when done.
+        -:   13: * 
+        -:   14: * Input is a mpz_t** array which is destroyed upon function completion
+        -:   15: * 
+        -:   16: */
+        -:   17:
+        -:   18:#include "spex_internal.h"
+        -:   19:
+    #####:   20:void spex_delete_mpz_array
+        -:   21:(
+        -:   22:    mpz_t **x,      // mpz array to be deleted
+        -:   23:    int64_t n       // Size of x
+        -:   24:)
+        -:   25:{
+    #####:   26:    if (x == NULL || (*x) == NULL) {return;}
+    #####:   27:    for (int64_t i = 0; i < n; i++)
+        -:   28:    {
+    #####:   29:        if ( (*x) [i] != NULL)
+        -:   30:        {
+    #####:   31:            SPEX_MPZ_CLEAR((*x) [i]);
+        -:   32:        }
+        -:   33:    }
+    #####:   34:    SPEX_FREE ((*x));
+        -:   35:}
