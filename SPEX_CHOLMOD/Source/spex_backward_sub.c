@@ -28,7 +28,7 @@
 
 SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 (
-    mpz_t *x,               // right hand side vector
+    SPEX_vector *x,         // right hand side vector
     mpq_t x_scale,          // pending scale for x, applying this x_scale to
                             // x will result in a non-integer value
     const SPEX_matrix *U,   // input upper triangular matrix
@@ -40,13 +40,14 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 {
     SPEX_info info ;
     int sgn;
+    int64_t n = U->n;
     mpq_t pending_scale; SPEX_MPQ_SET_NULL(pending_scale);// TODO make input
     mpz_t tmpz; SPEX_MPZ_SET_NULL(tmpz);
     SPEX_CHECK(SPEX_mpq_init(pending_scale));
     SPEX_CHECK(SPEX_mpz_init(tmpz));
 
     // Start at x[n-1], since x[n] will remain the same
-    for (int64_t i = U->n-2; i >= 0; i--)
+    for (int64_t i = n-2; i >= 0; i--)
     {
         // tmpz = 0
         SPEX_CHECK(SPEX_mpz_set_ui(tmpz, 0));
@@ -57,11 +58,11 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 
             // skip if diagonal or corresponding entry in x is zero
             if (Q_inv[j] == i) {continue;}
-            SPEX_CHECK(SPEX_mpz_sgn(&sgn, x[P[Q_inv[j]]]));
+            SPEX_CHECK(SPEX_mpz_sgn(&sgn, x->x[P[Q_inv[j]]]));
             if (sgn == 0) {continue;}
 
             // tmpz -= U(i,j)*x[j]
-            SPEX_CHECK(SPEX_mpz_submul(tmpz, U->v[i]->x[p], x[P[Q_inv[j]]]));
+            SPEX_CHECK(SPEX_mpz_submul(tmpz, U->v[i]->x[p], x->x[P[Q_inv[j]]]));
         }
         // pending_scale = S(2, i)*S(3, i)
         SPEX_CHECK(SPEX_mpq_mul(pending_scale,
@@ -71,11 +72,11 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
         SPEX_CHECK(SPEX_mpz_mul(tmpz, tmpz, SPEX_MPQ_NUM(pending_scale)));
 
         // x[i] = x[i]*sd[n-1]+tmpz
-        SPEX_CHECK(SPEX_mpz_mul(x[i], x[i], sd[n-1]));
-        SPEX_CHECK(SPEX_mpz_add(x[i], x[i], tmpz));
+        SPEX_CHECK(SPEX_mpz_mul(x->x[i], x->x[i], sd[n-1]));
+        SPEX_CHECK(SPEX_mpz_add(x->x[i], x->x[i], tmpz));
 
         // x[i] = x[i]/sd[i]
-        SPEX_CHECK(SPEX_mpz_divexact(x[i], x[i], sd[i]));
+        SPEX_CHECK(SPEX_mpz_divexact(x->x[i], x->x[i], sd[i]));
     }
 
     // set x_scale = 1/sd[n]

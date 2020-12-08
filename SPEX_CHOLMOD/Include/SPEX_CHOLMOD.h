@@ -506,7 +506,7 @@ SPEX_info SPEX_initialize_expert
 SPEX_info SPEX_finalize (void) ;
 
 //------------------------------------------------------------------------------
-// Primary factorization update routines
+// Primary factorization update routine
 //------------------------------------------------------------------------------
 
 SPEX_info SPEX_LUU
@@ -526,6 +526,29 @@ SPEX_info SPEX_LUU
     const SPEX_options *option// command parameters
 );
 
+//------------------------------------------------------------------------------
+// Function for solving LDUx =b
+//------------------------------------------------------------------------------
+
+SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
+(
+    // Output
+    SPEX_matrix **x_handle, // rational solution to the system
+    // input:
+    SPEX_matrix *b,         // right hand side vector
+    int64_t *h,             // history vector
+    const SPEX_matrix *A,   // Input matrix
+    const SPEX_matrix *L,   // lower triangular matrix
+    const SPEX_matrix *U,   // upper triangular matrix
+    const mpq_t *S,         // the pending scale factor matrix
+    const mpz_t *sd,        // array of scaled pivots
+    const int64_t *Ldiag,   // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const int64_t *P,       // row permutation
+    const int64_t *P_inv,   // inverse of row permutation
+    const int64_t *Q_inv,   // inverse of column permutation
+    const bool keep_b,      // indicate if b will be reused
+    const SPEX_options* option // Command options
+);
 
 //------------------------------------------------------------------------------
 //---------------------------SPEX GMP/MPFR Functions----------------------------

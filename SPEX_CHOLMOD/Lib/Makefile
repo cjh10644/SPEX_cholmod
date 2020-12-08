@@ -22,27 +22,30 @@ CFLAGS += -Wall -Wextra -Wpedantic -Werror
 # SPEX_CHOLMOD depends on SuiteSparse_config, M, GMP, and MPFR
 LDLIBS += -lsuitesparseconfig -lm -lgmp -lmpfr
 
-C = $(CC) $(CF) -I../Include -I../SuiteSparse_config
+C = $(CC) $(CF) -I../Include -I../../SuiteSparse_config
 
 all: install
 
 OBJ = \
-    SPEX_calloc.o spex_get_scattered_v.o spex_cppu.o SPEX_gmp.o \
-    SPEX_create_default_options.o spex_create_mpq_array.o SPEX_initialize.o \
-    spex_create_mpz_array.o         SPEX_initialize_expert.o \
-    spex_insert_new_entry.o \
-    spex_cumsum.o      \
-    spex_delete_mpq_array.o         spex_ipge.o \
-    spex_delete_mpz_array.o         SPEX_LUU.o \
-    SPEX_malloc.o \
-    spex_dppu1.o                    SPEX_matrix_alloc.o \
-    spex_dppu2.o                    SPEX_matrix_free.o \
-    spex_finalize_and_insert_vk.o   SPEX_realloc.o \
+    spex_backward_sub.o             spex_get_scattered_v.o \
+    SPEX_calloc.o                   SPEX_gmp.o \
+    spex_cppu.o \
+    SPEX_create_default_options.o   SPEX_initialize.o \
+    spex_create_mpq_array.o         SPEX_initialize_expert.o \
+    spex_create_mpz_array.o         spex_insert_new_entry.o \
+    spex_cumsum.o                   spex_ipge.o \
+    spex_delete_mpq_array.o         SPEX_LUU.o \
+    spex_delete_mpz_array.o         SPEX_malloc.o \
+    SPEX_matrix_alloc.o \
+    spex_dppu1.o                    SPEX_matrix_free.o \
+    spex_dppu2.o                    SPEX_realloc.o \
+    spex_finalize_and_insert_vk.o   SPEX_solve.o \
     SPEX_finalize.o                 spex_triangular_solve.o \
     spex_find_next_nz.o             SPEX_vector_alloc.o \
-    SPEX_free.o                     SPEX_vector_free.o \
-    spex_get_nnz_pattern.o          SPEX_vector_realloc.o
-#spex_delete_scattered_vector.o  spex_create_scattered_vector.o  
+    spex_forward_sub.o              SPEX_vector_free.o \
+    SPEX_free.o                     SPEX_vector_realloc.o \
+    spex_get_nnz_pattern.o          spex_verify.o
+#    spex_delete_scattered_vector.o  spex_create_scattered_vector.o \
 
 
 $(OBJ): ../Include/SPEX_CHOLMOD.h ../Source/spex_internal.h Makefile

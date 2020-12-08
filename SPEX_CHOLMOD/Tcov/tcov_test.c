@@ -80,8 +80,8 @@ int main( int argc, char* argv[])
     mpq_t *S = NULL;
     int64_t *P = NULL, *P_inv = NULL, *Q = NULL, *Q_inv = NULL;
 
-    TEST_CHECK(SPEX_matrix_alloc(&L, 4, 4));
-    TEST_CHECK(SPEX_matrix_alloc(&U, 4, 4));
+    TEST_CHECK(SPEX_matrix_alloc(&L, 4, 4, true));
+    TEST_CHECK(SPEX_matrix_alloc(&U, 4, 4, true));
     int64_t nz = 0;
     for (i = 0; i < 4; i++)
     {
@@ -101,7 +101,7 @@ int main( int argc, char* argv[])
         U->v[i]->nz = 4-i;
     }
 
-    TEST_CHECK(SPEX_vector_alloc(&vk, 4));
+    TEST_CHECK(SPEX_vector_alloc(&vk, 4, true));
     for (i = 0; i < 4; i++)
     {
         TEST_CHECK(SPEX_mpz_set_ui(vk->x[i], Ak_new[i]));

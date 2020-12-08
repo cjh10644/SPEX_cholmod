@@ -14,7 +14,7 @@
     SPEX_matrix_free(&b);             \
     SPEX_matrix_free(&x);             \
     SPEX_matrix_free(&b2);            \
-    SPEX_MPQ_clear(x_scale);
+    SPEX_MPQ_CLEAR(x_scale);
 
 #include "spex_internal.h"
 
@@ -104,7 +104,7 @@ SPEX_info spex_verify
                                      b2->v[0]->x[i], SPEX_MPQ_NUM(b2->scale)));
 
         SPEX_CHECK(SPEX_mpz_cmp(&sgn, b2->v[0]->x[i], b->v[0]->x[i]));
-        if (r != 0)
+        if (sgn != 0)
         {
             *correct = false;
             break;

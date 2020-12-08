@@ -60,13 +60,13 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
     SPEX_matrix **x_handle, // rational solution to the system
     // input:
     SPEX_matrix *b,         // right hand side vector
-    int64_t *h;             // history vector
+    int64_t *h,             // history vector
     const SPEX_matrix *A,   // Input matrix
     const SPEX_matrix *L,   // lower triangular matrix
     const SPEX_matrix *U,   // upper triangular matrix
     const mpq_t *S,         // the pending scale factor matrix
     const mpz_t *sd,        // array of scaled pivots
-    int64_t *Ldiag,         // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const int64_t *Ldiag,   // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const int64_t *P,       // row permutation
     const int64_t *P_inv,   // inverse of row permutation
     const int64_t *Q_inv,   // inverse of column permutation
@@ -97,9 +97,9 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
     int64_t i, j, n = L->n;
     mpq_t x_scale ;
     SPEX_MPQ_SET_NULL (x_scale) ;
-    SPEX_CHECK(SPEX_mpq_init(x_scale));
-
     SPEX_matrix *x = NULL;   // final solution
+
+    SPEX_CHECK(SPEX_mpq_init(x_scale));
     // even though x will be dense, we initialize it as sparse, which make each
     // of its columns initialized with length 0, and we will allocate space
     // for its mpz_t vector later depend on the value keep_b 

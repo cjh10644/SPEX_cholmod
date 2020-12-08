@@ -108,6 +108,9 @@
     /* include this header to make macro GOTCHA available */
     #include "../Tcov/tcov_malloc_test.h"
 #endif
+#ifndef GOTCHA
+    #define GOTCHA
+#endif
 
 //------------------------------------------------------------------------------
 // printing control
@@ -428,7 +431,6 @@ SPEX_info spex_get_scattered_v
     SPEX_vector *v,              // the vector in compressed form, whose
                                  // max index is n
     const int64_t n,             // number of entries in v
-    const bool eliminate_zero,   // indicate if explicit zero should be elimated
     const bool keep_v            // indicate if the mpz values should be kept
 );
 
@@ -611,6 +613,48 @@ SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
     const mpz_t *sd,    // array of scaled pivots
     const int64_t *P,   // row permutation
     const int64_t *P_inv// inverse of row permutation
+);
+
+SPEX_info spex_forward_sub // perform sparse forward substitution
+(
+    SPEX_vector *x,     // Input: the right-hand-side vector
+                        // Output: solution x
+    mpq_t x_scale,      // pending scale for x, initially 1
+    int64_t *h,         // history vector for x
+    const SPEX_matrix *L,// matrix L
+    const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const mpq_t *S,     // the pending scale factor matrix
+    const mpz_t *sd,    // array of scaled pivots
+    const int64_t *P,   // row permutation
+    const int64_t *P_inv// inverse of row permutation
+);
+
+SPEX_info spex_backward_sub  // performs sparse REF backward substitution
+(
+    SPEX_vector *x,         // right hand side vector
+    mpq_t x_scale,          // pending scale for x, applying this x_scale to
+                            // x will result in a non-integer value
+    const SPEX_matrix *U,   // input upper triangular matrix
+    const mpq_t *S,         // the pending scale factor matrix
+    const mpz_t *sd,        // array of scaled pivots
+    const int64_t *P,       // row permutation
+    const int64_t *Q_inv    // inverse of column permutation
+);
+
+SPEX_info spex_verify
+(   
+    bool *correct,         // indicate if the verification is passed
+    const SPEX_matrix *L,  // lower triangular matrix
+    const SPEX_matrix *U,  // upper triangular matrix
+    const SPEX_matrix *A,  // Input matrix
+    int64_t *h,            // history vector
+    const mpz_t *sd,       // array of scaled pivots
+    const mpq_t *S,        // the pending scale factor matrix
+    const int64_t *P,      // row permutation
+    const int64_t *P_inv,  // inverse of row permutation
+    const int64_t *Q_inv,  // inverse of column permutation
+    const int64_t *Ldiag,  // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const SPEX_options *option// command options
 );
 
 #endif

@@ -38,7 +38,7 @@ SPEX_info spex_get_scattered_v
     int64_t p, i;
     spex_scattered_vector *sv = NULL;
 
-    SPEX_CHECK(spex_scattered_vector_alloc(&sv, n));
+    SPEX_CHECK(spex_scattered_vector_alloc(&sv, n, true));
 
     int sgn;
     p = 0;

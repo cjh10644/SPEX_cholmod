@@ -47,18 +47,18 @@ SPEX_info spex_forward_sub // perform sparse forward substitution
     for (i = 0; i < n; i++)
     {
         // skip if x(P[i]) == 0
-        SPEX_CHECK(SPEX_mpz_sgn(&sgn, x[P[i]]));
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, x->x[P[i]]));
         if (sgn == 0)       { continue; }
 
         // perform i-th IPGE update for x
-        SPEX_CHECK(spex_ipge(x, x_scale, h, NULL, L->v[j], P,
-            P_inv, sd, SPEX_2D(S, 1, j), SPEX_2D(S, 3, j), Ldiag[j], j));
+        SPEX_CHECK(spex_ipge(x, x_scale, h, NULL, L->v[i], P,
+            P_inv, sd, SPEX_2D(S, 1, i), SPEX_2D(S, 3, i), Ldiag[i], i));
     } 
     // apply x_scale to x[P[n]] and set x_scale to 1
-    SPEX_CHECK(SPEX_mpz_divexact(x[perm[n-1]],
-                            x[perm[n-1]], SPEX_MPQ_DEN(x_scale)));
-    SPEX_CHECK(SPEX_mpz_mul(x[perm[n-1]],
-                            x[perm[n-1]], SPEX_MPQ_NUM(x_scale)));
+    SPEX_CHECK(SPEX_mpz_divexact(x->x[P[n-1]],
+                            x->x[P[n-1]], SPEX_MPQ_DEN(x_scale)));
+    SPEX_CHECK(SPEX_mpz_mul(x->x[P[n-1]],
+                            x->x[P[n-1]], SPEX_MPQ_NUM(x_scale)));
     SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));
 
     return SPEX_OK; 
