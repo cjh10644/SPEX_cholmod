@@ -144,7 +144,7 @@ SPEX_info spex_ipge // perform IPGE on x based on v
         }
         else
         {
-            SPEX_CHECK(SPEX_mpz_addmul(sv_x->x[i], v->x[p], sv_x->x[perm[j]]));
+            SPEX_CHECK(SPEX_mpz_submul(sv_x->x[i], v->x[p], sv_x->x[perm[j]]));
             if (real_hi > -1)
             {
                 SPEX_CHECK(SPEX_mpz_divexact(sv_x->x[i],

@@ -28,8 +28,9 @@
 
 SPEX_info SPEX_LUU
 (
+    SPEX_matrix *A,         // the original matrix in compressed-column form
     SPEX_matrix *L,         // stored in compressed-column form
-    SPEX_matrix *U,         // stored in comptessed-row form
+    SPEX_matrix *U,         // stored in compressed-row form
     mpz_t *d,               // an array of size n that stores the unscaled pivot
     mpz_t *sd,              // an array of size n that stores the scaled pivot
     mpq_t *S,               // an array of size 3*n that stores pending scales
@@ -38,7 +39,6 @@ SPEX_info SPEX_LUU
     int64_t *Q,             // column permutation
     int64_t *Q_inv,         // inverse of column permutation
     SPEX_vector *vk,        // the inserted column
-    bool keep_vk,           // indicate if the vector vk will be keep unchanged
     int64_t k,              // the column index that vk will be inserted
     const SPEX_options *option// command parameters
 )
@@ -76,6 +76,23 @@ SPEX_info SPEX_LUU
     SPEX_CHECK(spex_get_nnz_pattern(&Ldiag, &Lr_offdiag, &Uci, &Ucp, &Ucx,
         L, U, P, option));
 
+    // initialize environment for the inserted column
+    SPEX_CHECK(spex_get_scattered_v(&vk_dense, vk, n, true));
+    SPEX_vector *tmpv;
+    tmpv = vk; vk = A->v[k]; A->v[k] = tmpv;
+    int64_t last_update = -1;
+    int64_t vk_2ndlastnz = -1;
+    SPEX_CHECK(SPEX_mpq_set_ui(vk_scale, 1, 1));
+    for (p = 0; p < vk_dense->nz; p++)
+    {
+        i = vk_dense->i[p];
+        if (P_inv[i] > vk_2ndlastnz && P_inv[i] != n-1)
+        {
+            vk_2ndlastnz = P_inv[i];
+        }
+        h_for_vk[i] = -1;
+    }
+
     k = Q_inv[k];
     // build Lk_dense_col and Uk_dense_row, remove explicit 0 if k == 0
     GOTCHA;
@@ -94,21 +111,6 @@ SPEX_info SPEX_LUU
                                      U->v[i]->x[U->v[i]->nz]));
             U->v[i]->i[Ucx[p]] = U->v[i]->i[U->v[i]->nz];
         }
-    }
-
-    // initialize environment for the inserted column
-    SPEX_CHECK(spex_get_scattered_v(&vk_dense, vk, n, keep_vk));
-    int64_t last_update = -1;
-    int64_t vk_2ndlastnz = -1;
-    SPEX_CHECK(SPEX_mpq_set_ui(vk_scale, 1, 1));
-    for (p = 0; p < vk_dense->nz; p++)
-    {
-        i = vk_dense->i[p];
-        if (P_inv[i] > vk_2ndlastnz && P_inv[i] != n-1)
-        {
-            vk_2ndlastnz = P_inv[i];
-        }
-        h_for_vk[i] = -1;
     }
 
     // initialize certain variables required by the loop
@@ -149,8 +151,9 @@ SPEX_info SPEX_LUU
         // - OR all off-diagonal entries below (k-1)-th row in vk
         //   and column n-1 of U are zeros
         SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense->x[P[n-1]]));
+                printf("sgn=%d last_update=%ld vk_2ndlastnz=%ld\n",sgn, last_update, vk_2ndlastnz);
         if ((jnext == n && last_update == k) ||
-            (vk_2ndlastnz <= k &&
+            (vk_2ndlastnz < k &&
              (sgn == 0 || Ucp[Q[n-1]+1]-Ucp[Q[n-1]] == 1 ||
               Uci[Ucp[Q[n-1]+1]-2] < k                     )))
         {
@@ -437,6 +440,11 @@ SPEX_info SPEX_LUU
         SPEX_CHECK(SPEX_mpq_set_ui(SPEX_2D(S, 2, k), 1, 1));
         SPEX_CHECK(SPEX_mpq_set_ui(SPEX_2D(S, 3, k), 1, 1));
     }
+
+    bool result;
+    SPEX_CHECK(spex_verify(&result, L, U, A, h, (const mpz_t*) sd,
+        (const mpq_t*) S, P, P_inv, Q, Q_inv, Ldiag, option));
+    printf("the factorization is %s\n", result?"correct":"incorrect");
 
     SPEX_FREE_ALL;
     return SPEX_OK;

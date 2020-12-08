@@ -48,6 +48,7 @@
 
 #define MAX_MALLOC_COUNT 1000
 
+int64_t Aold[16] = {3, 5, 6, 7, 11, 2, -7, 10, 8, 3, -2, -2, 7, 5, 1, -6};//CSC
 int64_t Lold[10] = {3, 5, 6, 7, -49, -87, -47, -17, 527, 884};// CSC
 int64_t Uold[10] = {3, 11, 8, 7, -49, -31, -20, -17, 57,884};//CSR
 int64_t Ak_new[4]= {1,4,7,11}; // new column
@@ -74,7 +75,7 @@ int main( int argc, char* argv[])
     SPEX_options* option = SPEX_create_default_options();
     if (!option) return 0;//{continue;}
 
-    SPEX_matrix *L = NULL, *U = NULL;
+    SPEX_matrix *L = NULL, *U = NULL, *A = NULL;
     SPEX_vector *vk = NULL;
     mpz_t *d = NULL, *sd = NULL;
     mpq_t *S = NULL;
@@ -99,6 +100,17 @@ int main( int argc, char* argv[])
         }
         L->v[i]->nz = 4-i;
         U->v[i]->nz = 4-i;
+    }
+    TEST_CHECK(SPEX_matrix_alloc(&A, 4, 4, true));
+    for (i = 0; i < 4; i++)
+    {
+        TEST_CHECK(SPEX_vector_realloc(A->v[i], 4));
+        for (p = 0; p < 4; p++)
+        {
+            TEST_CHECK(SPEX_mpz_set_si(A->v[i]->x[p], Aold[4*i+p]));
+            A->v[i]->i[p] = p;
+        }
+        A->v[i]->nz = 4;
     }
 
     TEST_CHECK(SPEX_vector_alloc(&vk, 4, true));
@@ -134,7 +146,7 @@ int main( int argc, char* argv[])
         Q_inv[i] = i;
     }
     GOTCHA;
-    TEST_CHECK(SPEX_LUU(L, U, d, sd, S, P, P_inv, Q, Q_inv, vk, false, 1,NULL));
+    TEST_CHECK(SPEX_LUU(A, L, U, d, sd, S, P, P_inv, Q, Q_inv, vk, 1, NULL));
 
     mpz_t tmpz; SPEX_MPZ_SET_NULL(tmpz);
     TEST_CHECK(SPEX_mpz_init(tmpz));
@@ -170,6 +182,36 @@ int main( int argc, char* argv[])
     }
     printf("P=[%ld %ld %ld %ld]\n",P[0], P[1], P[2], P[3]);
     printf("Q=[%ld %ld %ld %ld]\n",Q[0], Q[1], Q[2], Q[3]);
+
+
+    // reset A=L=U=P=Q=I
+    for (i = 0; i < n; i++)
+    {
+        TEST_CHECK(SPEX_mpz_set_ui(A->v[i]->x[0], 1));
+        A->v[i]->i[0] = i;
+        A->v[i]->nz = 1;
+        TEST_CHECK(SPEX_mpz_set_ui(L->v[i]->x[0], 1));
+        L->v[i]->i[0] = i;
+        L->v[i]->nz = 1;
+        TEST_CHECK(SPEX_mpz_set_ui(U->v[i]->x[0], 1));
+        U->v[i]->i[0] = i;
+        U->v[i]->nz = 1;
+        TEST_CHECK(SPEX_mpz_set(d[i],  L->v[i]->x[0]));
+        TEST_CHECK(SPEX_mpz_set(sd[i], L->v[i]->x[0]));
+        TEST_CHECK(SPEX_mpq_set_ui(SPEX_2D(S, 1, i), 1, 1));
+        TEST_CHECK(SPEX_mpq_set_ui(SPEX_2D(S, 2, i), 1, 1));
+        TEST_CHECK(SPEX_mpq_set_ui(SPEX_2D(S, 3, i), 1, 1));
+        P[i] = i;
+        Q[i] = i;
+        P_inv[i] = i;
+        Q_inv[i] = i;
+    }
+    TEST_CHECK(SPEX_mpz_set_ui(vk->x[0], 2));
+    vk->i[0] = 1;
+    TEST_CHECK(SPEX_mpz_set_ui(vk->x[1], 5));
+    vk->i[1] = 3;
+    vk->nz = 2;
+    TEST_CHECK(SPEX_LUU(A, L, U, d, sd, S, P, P_inv, Q, Q_inv, vk, 1, NULL));
     return 0;
 }
 

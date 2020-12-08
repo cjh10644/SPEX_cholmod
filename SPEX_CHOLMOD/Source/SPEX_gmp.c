@@ -1481,6 +1481,26 @@ SPEX_info SPEX_mpq_cmp_ui
 }
 
 //------------------------------------------------------------------------------
+// SPEX_mpq_cmp_z
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely check if a mpq number equals to a mpz number,
+ * r = 0 (r = false) if x != y, r < 0 if x < y, or r > 0 if x > y */
+
+SPEX_info SPEX_mpq_cmp_z
+(
+    int *r,
+    const mpq_t x,
+    const mpz_t y
+)
+{
+    SPEX_GMP_WRAPPER_START ;
+    *r = mpq_cmp_z (x, y) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
 // SPEX_mpq_equal
 //------------------------------------------------------------------------------
 

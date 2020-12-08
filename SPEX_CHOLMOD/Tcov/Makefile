@@ -19,7 +19,7 @@ CFLAGS = -g -fprofile-arcs -ftest-coverage \
         -Wredundant-decls -Wnested-externs -Wdisabled-optimization -std=c99 \
         -Wno-unused-parameter -I../Include -I../Source -I../Demo \
         -I../../SuiteSparse_config \
-        -DSPEX_GMP_LIST_INIT=2 -DSPEX_CHOLMOD_TCOV
+        -DSPEX_GMP_LIST_INIT=2 -DSPEX_CHOLMOD_TCOV -DSPEX_DEBUG
 
 LDLIBS += -lm -lgmp -lmpfr -lsuitesparseconfig
 

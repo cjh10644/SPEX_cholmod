@@ -652,6 +652,7 @@ SPEX_info spex_verify
     const mpq_t *S,        // the pending scale factor matrix
     const int64_t *P,      // row permutation
     const int64_t *P_inv,  // inverse of row permutation
+    const int64_t *Q,      // column permutation
     const int64_t *Q_inv,  // inverse of column permutation
     const int64_t *Ldiag,  // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const SPEX_options *option// command options

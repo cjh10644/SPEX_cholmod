@@ -511,6 +511,7 @@ SPEX_info SPEX_finalize (void) ;
 
 SPEX_info SPEX_LUU
 (
+    SPEX_matrix *A,         // the original matrix in compressed-column form
     SPEX_matrix *L,         // stored in compressed-column form
     SPEX_matrix *U,         // stored in comptessed-row form
     mpz_t *d,               // an array of size n that stores the unscaled pivot
@@ -521,7 +522,6 @@ SPEX_info SPEX_LUU
     int64_t *Q,             // column permutation
     int64_t *Q_inv,         // inverse of column permutation
     SPEX_vector *vk,        // the inserted column
-    bool keep_vk,           // indicate if the vector vk will be keep unchanged
     int64_t k,              // the column index that vk will be inserted
     const SPEX_options *option// command parameters
 );
@@ -664,6 +664,8 @@ SPEX_info SPEX_mpq_cmp (int *r, const mpq_t x, const mpq_t y) ;
 
 SPEX_info SPEX_mpq_cmp_ui (int *r, const mpq_t x,
                     const uint64_t num, const uint64_t den) ;
+
+SPEX_info SPEX_mpq_cmp_z (int *r, const mpq_t x, const mpz_t y) ;
 
 SPEX_info SPEX_mpq_sgn (int *sgn, const mpq_t x) ;
 

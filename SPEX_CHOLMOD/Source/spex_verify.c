@@ -29,6 +29,7 @@ SPEX_info spex_verify
     const mpq_t *S,        // the pending scale factor matrix
     const int64_t *P,      // row permutation
     const int64_t *P_inv,  // inverse of row permutation
+    const int64_t *Q,      // column permutation
     const int64_t *Q_inv,  // inverse of column permutation
     const int64_t *Ldiag,  // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const SPEX_options *option// command options
@@ -60,25 +61,25 @@ SPEX_info spex_verify
     }
 
     // -------------------------------------------------------------------------
-    // solve for x
+    // solve LD^(-1)U(:,Q)x = b for x
     // -------------------------------------------------------------------------
     SPEX_CHECK(SPEX_solve(&x, b, h, A, L, U, S, sd, Ldiag, P, P_inv, Q_inv,
         true, option));
 
     // -------------------------------------------------------------------------
-    // compute b2 = A*x
+    // compute b2 = A(:,Q)*x(P)
     // -------------------------------------------------------------------------
     for (i = 0; i < n; i++)
     {
-        SPEX_CHECK(SPEX_mpz_sgn(&sgn, x->v[0]->x[i]));
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, x->v[0]->x[P[i]]));
         if (sgn == 0) { continue;}
 
-        for (int64_t p = 0; p < A->v[i]->nz; p++)
+        for (int64_t p = 0; p < A->v[Q[i]]->nz; p++)
         {
-            int64_t j = A->v[i]->i[p];
+            int64_t j = A->v[Q[i]]->i[p];
             // b2[j] += x[i]*A(j,i)
             SPEX_CHECK(SPEX_mpz_addmul(b2->v[0]->x[j],
-                                       x->v[0]->x[i], A->v[i]->x[p]));
+                                       x->v[0]->x[P[i]], A->v[Q[i]]->x[p]));
         }
     }
     // update b2->scale = x->scale*A->scale
@@ -103,6 +104,7 @@ SPEX_info spex_verify
         SPEX_CHECK(SPEX_mpz_divexact(b2->v[0]->x[i],
                                      b2->v[0]->x[i], SPEX_MPQ_NUM(b2->scale)));
 
+        SPEX_CHECK(SPEX_gmp_printf("Ax=%Zd, b=%Zd\n", b2->v[0]->x[i],b->v[0]->x[i]));
         SPEX_CHECK(SPEX_mpz_cmp(&sgn, b2->v[0]->x[i], b->v[0]->x[i]));
         if (sgn != 0)
         {
