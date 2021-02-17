@@ -591,8 +591,9 @@ SPEX_info spex_ipge // perform IPGE on x based on v
     const mpz_t *sd,// array of scaled pivots
     const mpq_t v_scale1, // the first pending scale for v
     const mpq_t v_scale2, // the second pending scale for v
+    const mpz_t prev_unscaled_diag,// the (j-1)-th unscaled diagonal entry
     const int64_t diag_j,// x[diag_j] is the entry in v with index perm[j]
-    const int64_t j
+    const int64_t j // column index of v in L
 );
 
 SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v

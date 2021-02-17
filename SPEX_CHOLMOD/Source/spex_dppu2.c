@@ -72,6 +72,26 @@ SPEX_info spex_dppu2
     SPEX_CHECK(SPEX_mpq_set_ui(one, 1, 1));
     SPEX_CHECK(SPEX_mpz_init(Lksk));
 
+    printf("using dppu2\n");
+    for (int64_t i = 0; i < n; i++)
+    {
+        for (int64_t p = 0; p < L->v[i]->nz; p++)
+        {
+            j = L->v[i]->i[p];
+            SPEX_CHECK(SPEX_gmp_printf("(%ld)%Zd ",j,L->v[i]->x[p]));
+        }
+        SPEX_CHECK(SPEX_gmp_printf("......col %ld(S=%Qd*%Qd)\n",i,SPEX_2D(S, 1, i), SPEX_2D(S, 3, i)));
+    }
+    for (int64_t i = 0; i < n; i++)
+    {
+        for (int64_t p = 0; p < U->v[i]->nz; p++)
+        {
+            j = U->v[i]->i[p];
+            SPEX_CHECK(SPEX_gmp_printf("(%ld)%Zd ",j,U->v[i]->x[p]));
+        }
+        SPEX_CHECK(SPEX_gmp_printf("......col %ld(S=%Qd*%Qd)\n",i,SPEX_2D(S, 2, i), SPEX_2D(S, 3, i)));
+    }
+
     if (ks == n)
     {
         //----------------------------------------------------------------------
@@ -367,6 +387,25 @@ SPEX_info spex_dppu2
         SPEX_CHECK(SPEX_mpz_set (L->v[n-1]->x[0], U->v[n-1]->x[0]     ));
         U->v[n-1]->i[0] = Q[n-1];
         U->v[n-1]->nz = 1;
+    }
+
+    for (int64_t i = 0; i < n; i++)
+    {
+        for (int64_t p = 0; p < L->v[i]->nz; p++)
+        {
+            j = L->v[i]->i[p];
+            SPEX_CHECK(SPEX_gmp_printf("(%ld)%Zd ",j,L->v[i]->x[p]));
+        }
+        SPEX_CHECK(SPEX_gmp_printf("......col %ld(S=%Qd*%Qd)\n",i,SPEX_2D(S, 1, i), SPEX_2D(S, 3, i)));
+    }
+    for (int64_t i = 0; i < n; i++)
+    {
+        for (int64_t p = 0; p < U->v[i]->nz; p++)
+        {
+            j = U->v[i]->i[p];
+            SPEX_CHECK(SPEX_gmp_printf("(%ld)%Zd ",j,U->v[i]->x[p]));
+        }
+        SPEX_CHECK(SPEX_gmp_printf("......col %ld(S=%Qd*%Qd)\n",i,SPEX_2D(S, 2, i), SPEX_2D(S, 3, i)));
     }
 
     SPEX_FREE_ALL;

@@ -11,11 +11,16 @@
 // Purpose: This function is called to perform diagonal permutation pivot update
 // when the submatrix (formed by rows and columns k to ks) has the following
 // pattern
-//       x 0 0 0 0
+//       x 0 0 0 0       <- row k
 //       0 x . . 0
 //       0 . x . 0
 //       0 . . x 0
-//       . 0 0 0 x
+//       . 0 0 0 x       <- row ks
+// The caller of this function always finds the biggest index from k+1:n-1 as ks
+// such that the submatrix has the above pattern. The patterns of ks+1 row and
+// column are unkown but must have at least one nonzero in U(k:ks,ks+1) or
+// L(ks+1, k+1:ks).
+//
 // This function will swap rows and columns k and ks in L and U. Noted that the
 // rows of L and columns of U are permuted implicitly via the permutation
 // matrices based on P and Q.
@@ -54,6 +59,7 @@ SPEX_info spex_dppu1
     const int64_t ks   // index of the diagonal to be swapped with, [0,n)
 )
 {
+    printf("using dppu1\n");
     // initialize workspace
     SPEX_info info;
     int sgn, Lksk_sgn;

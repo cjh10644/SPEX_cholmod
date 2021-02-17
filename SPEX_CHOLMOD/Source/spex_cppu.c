@@ -11,11 +11,16 @@
 // Purpose: This function is called to perform column permutation pivot update
 // when the submatrix (formed by rows and columns k to ks) has the following
 // pattern
-//       x 0 0 0 x
+//       x 0 0 0 x       <- row k
 //       . x . . .
 //       . . x . .
 //       . . . x .
-//       . . . . x
+//       . . . . x       <- row ks
+//
+//       ^       ^
+//       |       |
+//     col k   col ks
+//       
 // This function will swap columns k and ks in L and U. Noted that the columns
 // of U are permuted implicitly via the permutation matrix based on Q.
 
@@ -56,6 +61,7 @@ SPEX_info spex_cppu
     const int64_t ks // index of the diagonal to be swapped with, [0,n)
 )
 {
+    printf("using cppu\n");
     // initialize workspace
     SPEX_info info;
     int sgn, r;

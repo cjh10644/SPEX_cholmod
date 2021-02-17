@@ -53,13 +53,16 @@ SPEX_info spex_forward_sub // perform sparse forward substitution
         // perform i-th IPGE update for x
         SPEX_CHECK(spex_ipge(x, x_scale, h, NULL, L->v[i], P,
             P_inv, sd, SPEX_2D(S, 1, i), SPEX_2D(S, 3, i), Ldiag[i], i));
+        for(int64_t p=0;p<L->v[i]->nz;p++){SPEX_CHECK(SPEX_gmp_printf("%Zd ",L->v[i]->x[p]));}
+        SPEX_CHECK(SPEX_gmp_printf("S=%Qd*%Qd sd=%Zd\n x[3]=%Zd\n\n",SPEX_2D(S, 1, i), SPEX_2D(S, 3, i),sd[i],x->x[3]));
     } 
-    // apply x_scale to x[P[n]] and set x_scale to 1
-    SPEX_CHECK(SPEX_mpz_divexact(x->x[P[n-1]],
+    // apply x_scale to x[P[n-1]] and set x_scale to 1
+    /*SPEX_CHECK(SPEX_mpz_divexact(x->x[P[n-1]],
                             x->x[P[n-1]], SPEX_MPQ_DEN(x_scale)));
     SPEX_CHECK(SPEX_mpz_mul(x->x[P[n-1]],
                             x->x[P[n-1]], SPEX_MPQ_NUM(x_scale)));
-    SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));
+    SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));*/
+        SPEX_CHECK(SPEX_gmp_printf("x_scale=%Qd,x[3]=%Zd\n",x_scale,x->x[3]));
 
     return SPEX_OK; 
 }

@@ -15,7 +15,7 @@
 // update, where history update could be involved for certain entry. Therefore,
 // a history vector is required as a input/output. In case of a single IPGE
 // iteration with no need for history update, this function should not be used.
-// This function is called by the following three functions:
+// This function is called by the following functions:
 // spex_dppu2: successive IPGE update for row k of U after swapping with row
 //             ks of U.
 // spex_cppu: compute the (n-1)-th IPGE update of column k after vk is inserted.
@@ -38,7 +38,7 @@
 //
 // In addition, in case of history update is needed before the IPGE update for
 // x[i] and/or x[perm[j]], the equation becomes
-// x[i] = x[i]*v[perm[j]]/sd[h[i]]- v(i)*x[perm[j]])/sd[h[perm[j]]].
+// x[i] = x[i]*v[perm[j]]/sd[h[i]]- v(i)*x[perm[j]]/sd[h[perm[j]]].
 //
 // When the IPGE update finished, all entries x[perm[1:j]] will be scaled such
 // that the pending scaling factors become 1, while x[perm[j+1:n]] has common
@@ -67,6 +67,7 @@ SPEX_info spex_ipge // perform IPGE on x based on v
     const mpz_t *sd,// array of scaled pivots
     const mpq_t v_scale1, // the first pending scale for v
     const mpq_t v_scale2, // the second pending scale for v
+    const mpz_t prev_unscaled_diag,// the (j-1)-th unscaled diagonal entry
     const int64_t diag_j,// x[diag_j] is the entry in v with index perm[j]
     const int64_t j // column index of v in L
 )
@@ -114,10 +115,6 @@ SPEX_info spex_ipge // perform IPGE on x based on v
         {
             // x[i] = x[i]*v[perm[j]]
             SPEX_CHECK(SPEX_mpz_mul(sv_x->x[i], sv_x->x[i], v->x[diag_j]));
-            if (real_hi != real_hj && real_hi > -1)
-            {
-                SPEX_CHECK(SPEX_mpz_fdiv_q(sv_x->x[i], sv_x->x[i],sd[real_hi]));
-            }
         }
         else if (sv_x->i != NULL && h[i] >= -1)
         {
@@ -132,6 +129,7 @@ SPEX_info spex_ipge // perform IPGE on x based on v
                 *prev = perm_inv[i];
             }
         }
+        printf("real_hi=%d,real_hj=%d\n",real_hi,real_hj);
         if (real_hi != real_hj)
         {
             // tmpz = floor(v(i)*pending_scale)
@@ -139,16 +137,26 @@ SPEX_info spex_ipge // perform IPGE on x based on v
                                     SPEX_MPQ_NUM(pending_scale)));
             SPEX_CHECK(SPEX_mpz_fdiv_q(tmpz, tmpz,
                                     SPEX_MPQ_DEN(pending_scale)));
+
+            // x[i] = x[i]/sd[h[i]]
+            if (real_hi > -1)
+            {
+                SPEX_CHECK(SPEX_mpz_fdiv_q(sv_x->x[i], sv_x->x[i],sd[real_hi]));
+            }
+
             // x[i] = x[i]- tmpz
             SPEX_CHECK(SPEX_mpz_sub(sv_x->x[i], sv_x->x[i], tmpz));
         }
         else
         {
+        if (i==3){SPEX_CHECK(SPEX_gmp_printf("x[3]=%Zd",sv_x->x[i]));}
             SPEX_CHECK(SPEX_mpz_submul(sv_x->x[i], v->x[p], sv_x->x[perm[j]]));
+        if (i==3){SPEX_CHECK(SPEX_gmp_printf("x[3]=%Zd",sv_x->x[i]));}
             if (real_hi > -1)
             {
                 SPEX_CHECK(SPEX_mpz_divexact(sv_x->x[i],
                                              sv_x->x[i], sd[real_hi]));
+        if (i==3){SPEX_CHECK(SPEX_gmp_printf("x[3]=%Zd",sv_x->x[i]));}
             }
         }
 
@@ -156,10 +164,12 @@ SPEX_info spex_ipge // perform IPGE on x based on v
         h[i] = SPEX_FLIP(j);
     }
 
-    // x(perm(j)) = x[perm[j]]*x_scale*history_update
+    // x[perm[j]] = x[perm[j]]*history_update*x_scale
+        printf("j=%d,real_hj=%d\n",j,real_hj);
     if (j-1 > real_hj) // require history update
     {
-        SPEX_CHECK(SPEX_mpz_mul(sv_x->x[perm[j]], sv_x->x[perm[j]], sd[j-1]));
+        // FIXME should use unscaled pivot in the (j-1)-th vector instead of sd[j-1]
+        SPEX_CHECK(SPEX_mpz_mul(sv_x->x[perm[j]], sv_x->x[perm[j]], prev_unscaled_diag));
         if (real_hj > -1)
         {
             SPEX_CHECK(SPEX_mpz_divexact(sv_x->x[perm[j]],
@@ -173,6 +183,7 @@ SPEX_info spex_ipge // perform IPGE on x based on v
 
     // update scaling for x, since the scaling for v is skipped
     // x_scale=x_scale*v_scale1*v_scale2.
+    SPEX_CHECK(SPEX_gmp_printf("x_scale=%Qd*%Qd*%Qd\n",x_scale,v_scale1,v_scale2));
     SPEX_CHECK(SPEX_mpq_mul(x_scale, x_scale, v_scale1));
     SPEX_CHECK(SPEX_mpq_mul(x_scale, x_scale, v_scale2));
 

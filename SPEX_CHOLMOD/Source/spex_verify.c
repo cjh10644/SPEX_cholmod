@@ -57,7 +57,7 @@ SPEX_info spex_verify
     for (i = 0; i < n; i++)
     {
         tmp = rand();
-        SPEX_CHECK(SPEX_mpz_set_si(b->v[0]->x[i], tmp));
+        SPEX_CHECK(SPEX_mpz_set_si(b->v[0]->x[i], i+1));//tmp));
     }
 
     // -------------------------------------------------------------------------
@@ -93,6 +93,7 @@ SPEX_info spex_verify
     // integer values b2*b->scale and b*b->scale. b*b->scale are the values
     // stored in b->v->x. It can be shown that the resulted b2->scale = sd[n-1]
     SPEX_CHECK(SPEX_mpq_div(b2->scale, b2->scale, b->scale));
+    SPEX_CHECK(SPEX_gmp_printf("b2->scale=%Qd, sd[n-1]=%Zd\n", b2->scale,sd[n-1]));
 #ifdef SPEX_DEBUG
     SPEX_CHECK(SPEX_mpq_cmp_z(&sgn, b2->scale, sd[n-1]));
     ASSERT(sgn == 0);
@@ -104,7 +105,7 @@ SPEX_info spex_verify
         SPEX_CHECK(SPEX_mpz_divexact(b2->v[0]->x[i],
                                      b2->v[0]->x[i], SPEX_MPQ_NUM(b2->scale)));
 
-        SPEX_CHECK(SPEX_gmp_printf("Ax=%Zd, b=%Zd\n", b2->v[0]->x[i],b->v[0]->x[i]));
+        SPEX_CHECK(SPEX_gmp_printf("x= %Zd, Ax=%Zd, b=%Zd\n", x->v[0]->x[P[i]],b2->v[0]->x[i],b->v[0]->x[i]));
         SPEX_CHECK(SPEX_mpz_cmp(&sgn, b2->v[0]->x[i], b->v[0]->x[i]));
         if (sgn != 0)
         {

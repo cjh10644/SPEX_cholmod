@@ -212,6 +212,37 @@ int main( int argc, char* argv[])
     vk->i[1] = 3;
     vk->nz = 2;
     TEST_CHECK(SPEX_LUU(A, L, U, d, sd, S, P, P_inv, Q, Q_inv, vk, 1, NULL));
+    for (i = 0; i < n; i++)
+    {
+        TEST_CHECK(SPEX_mpq_mul(tmpq, SPEX_2D(S, 1, i), SPEX_2D(S, 3, i)));
+
+        for (p = 0; p < L->v[i]->nz; p++)
+        {
+            j = L->v[i]->i[p];
+            TEST_CHECK(SPEX_mpz_divexact(tmpz, L->v[i]->x[p],
+                SPEX_MPQ_DEN(tmpq)));
+            TEST_CHECK(SPEX_mpz_mul(tmpz, tmpz, SPEX_MPQ_NUM(tmpq)));
+            TEST_CHECK(SPEX_gmp_printf("(%ld)%Zd ",j,tmpz));
+        }
+        TEST_CHECK(SPEX_gmp_printf("......col %ld(S=%Qd)\n",i,tmpq));
+    }
+    for (i = 0; i < n; i++)
+    {
+        TEST_CHECK(SPEX_mpq_mul(tmpq, SPEX_2D(S, 2, i), SPEX_2D(S, 3, i)));
+
+        for (p = 0; p < U->v[i]->nz; p++)
+        {
+            j = U->v[i]->i[p];
+            TEST_CHECK(SPEX_mpz_divexact(tmpz, U->v[i]->x[p],
+                SPEX_MPQ_DEN(tmpq)));
+            TEST_CHECK(SPEX_mpz_mul(tmpz, tmpz, SPEX_MPQ_NUM(tmpq)));
+            TEST_CHECK(SPEX_gmp_printf("(%ld)%Zd ",j,tmpz));
+        }
+        TEST_CHECK(SPEX_gmp_printf("......col %ld(S=%Qd)\n",i,tmpq));
+    }
+    printf("P=[%ld %ld %ld %ld]\n",P[0], P[1], P[2], P[3]);
+    printf("Q=[%ld %ld %ld %ld]\n",Q[0], Q[1], Q[2], Q[3]);
+
     return 0;
 }
 

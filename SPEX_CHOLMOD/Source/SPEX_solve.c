@@ -136,12 +136,14 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
         }
         x->v[j]->nzmax = n;
 
-        // bx = (LD^(-1))\b, via forward substitution
+        // x = (LD^(-1))\x, via forward substitution
         SPEX_CHECK(spex_forward_sub(x->v[j], x_scale, h, L, Ldiag, S, sd,
             P, P_inv));
+        for (i=0;i<n;i++){SPEX_CHECK(SPEX_gmp_printf("x[%d]=%Zd\n",i,x->v[j]->x[i]));}
 
-        // bx = U\bx, via back substitution
+        // x = U\x, via back substitution
         SPEX_CHECK(spex_backward_sub(x->v[j], x_scale, U, S, sd, P, Q_inv));
+        for (i=0;i<n;i++){SPEX_CHECK(SPEX_gmp_printf("x[%d]=%Zd\n",i,x->v[j]->x[i]));}
     }
     //--------------------------------------------------------------------------
     // update the scale for the solution.
