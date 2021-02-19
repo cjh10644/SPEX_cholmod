@@ -122,9 +122,11 @@ SPEX_info SPEX_LUU
     // push column k to position n-1
     while (k < n-1)
     {
+    GOTCHA;
         // no need to update vk if we know not to use it
         if (use_col_n >= 0)
         {
+    GOTCHA;
             // get the k-th IPGE update of inserted column, if last_update is
             // returned as k instead of k-1, then vk_dense[P[k]] is 0
             SPEX_CHECK(spex_triangular_solve(vk_dense, vk_scale, h_for_vk,

@@ -220,8 +220,9 @@ SPEX_info spex_cppu
                 {
                     // perform i-th IPGE update for Lk_dense_col
                     SPEX_CHECK(spex_ipge(Lk_dense_col, SPEX_2D(S, 1, k), h,
-                        NULL, L->v[i], P, P_inv, (const mpz_t*) sd,
-                        SPEX_2D(S, 1, i), one, Ldiag[i], i));
+                        NULL, L, P, P_inv, (const mpz_t*) sd,
+                        SPEX_2D(S, 1, i), one,
+                        i==0?-1:Ldiag[i-1], Ldiag[i], i));
                     GOTCHA;
                 }
                 else

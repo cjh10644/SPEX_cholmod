@@ -60,25 +60,27 @@ SPEX_info spex_ipge // perform IPGE on x based on v
                     // SPEX_FLIP(h[i])-th iteration
     int64_t *prev,  // prev is the index of the found previous entry of the last
                     // one (i.e., 2nd last entry) in v(perm). update if !prev
-    const SPEX_vector *v,// the vector that contains the j-th pivot used to
-                    // compute x in the j-th IPGE iteration
+    const SPEX_matrix *M,// M->v[j] is the vector that contains the j-th pivot
+                    // used to compute x in the j-th IPGE iteration, which is
+                    // the vector v in the equations mentioned above
     const int64_t *perm, // permutation
     const int64_t *perm_inv, // inverse of permutation
     const mpz_t *sd,// array of scaled pivots
     const mpq_t v_scale1, // the first pending scale for v
     const mpq_t v_scale2, // the second pending scale for v
-    const mpz_t prev_unscaled_diag,// the (j-1)-th unscaled diagonal entry
-    const int64_t diag_j,// x[diag_j] is the entry in v with index perm[j]
-    const int64_t j // column index of v in L
+    const int64_t j, // column index of v in M
+    const int64_t cur_piv_index, // the index of j-th pivot in M->v[j]
+    const int64_t prev_piv_index // the index of (j-1)-th pivot in M->v[j-1]
 )
 {
     SPEX_info info;
-    if (!sv_x || !h || !perm || !perm_inv || !v || !sd)
+    if (!sv_x || !h || !perm || !perm_inv || !M || !sd)
     {
         return SPEX_INCORRECT_INPUT;
     }
     int64_t p, i, real_hj, real_hi;
     int sgn;
+    SPEX_vector *v = M->v[j];
     mpq_t pending_scale; SPEX_MPQ_SET_NULL(pending_scale);// TODO make input
     mpz_t tmpz; SPEX_MPZ_SET_NULL(tmpz);
     SPEX_CHECK(SPEX_mpq_init(pending_scale));
@@ -96,7 +98,7 @@ SPEX_info spex_ipge // perform IPGE on x based on v
     for (p = 0; p < v->nz; p++)
     {
         // exclude v(perm[j])
-        if (p == diag_j) // same as (i == perm[j])
+        if (p == cur_piv_index) // same as (i == perm[j])
         {
             continue;
         }
@@ -114,7 +116,8 @@ SPEX_info spex_ipge // perform IPGE on x based on v
         if (sgn != 0)    // x[i] != 0
         {
             // x[i] = x[i]*v[perm[j]]
-            SPEX_CHECK(SPEX_mpz_mul(sv_x->x[i], sv_x->x[i], v->x[diag_j]));
+            SPEX_CHECK(SPEX_mpz_mul(sv_x->x[i],
+                                    sv_x->x[i], v->x[cur_piv_index]));
         }
         else if (sv_x->i != NULL && h[i] >= -1)
         {
@@ -168,8 +171,10 @@ SPEX_info spex_ipge // perform IPGE on x based on v
         printf("j=%d,real_hj=%d\n",j,real_hj);
     if (j-1 > real_hj) // require history update
     {
-        // FIXME should use unscaled pivot in the (j-1)-th vector instead of sd[j-1]
-        SPEX_CHECK(SPEX_mpz_mul(sv_x->x[perm[j]], sv_x->x[perm[j]], prev_unscaled_diag));
+        GOTCHA;
+        // use the pivot in vector M->v[j-1] instead of sd[j-1]
+        SPEX_CHECK(SPEX_mpz_mul(sv_x->x[perm[j]],
+                                sv_x->x[perm[j]],M->v[j-1]->x[prev_piv_index]));
         if (real_hj > -1)
         {
             SPEX_CHECK(SPEX_mpz_divexact(sv_x->x[perm[j]],

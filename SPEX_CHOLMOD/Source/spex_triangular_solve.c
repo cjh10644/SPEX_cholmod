@@ -56,8 +56,9 @@ SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
             if (sgn == 0)       { continue; }
 
             // perform j-th IPGE update for x
-            SPEX_CHECK(spex_ipge(sv_x, x_scale, h, i_2ndlast, L->v[j], P,
-                P_inv, sd, SPEX_2D(S, 1, j), SPEX_2D(S, 3, j), Ldiag[j], j));
+            SPEX_CHECK(spex_ipge(sv_x, x_scale, h, i_2ndlast, L, P,
+                P_inv, sd, SPEX_2D(S, 1, j), SPEX_2D(S, 3, j), j, Ldiag[j],
+                j==0?-1:Ldiag[j-1]));
         }
         *last_update = k-1;
     }

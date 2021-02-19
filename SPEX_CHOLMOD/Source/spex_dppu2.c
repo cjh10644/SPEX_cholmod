@@ -292,8 +292,9 @@ SPEX_info spex_dppu2
 
         // perform j-th IPGE update for U(ks,:)
         SPEX_CHECK(spex_ipge(Uk_dense_row, SPEX_2D(S, 3, tmp_ks), h, NULL,
-            U->v[j], Q, Q_inv, (const mpz_t*)sd, SPEX_2D(S, 2, j),
-            SPEX_2D(S, 3, j), Ucx[Ucp[Q[j]+1]-1], j));
+            U, Q, Q_inv, (const mpz_t*)sd, SPEX_2D(S, 2, j), SPEX_2D(S, 3, j),
+            j, Ucx[Ucp[Q[j]+1]-1]/*Ucs[Ucp[Q[j]+1]-1] gives the column index of
+            j-th pivot in U*/, j==0?-1:Ucx[Ucp[Q[j-1]+1]-1]));
         // update last_nz_b4_ks
         last_nz_b4_ks = j;
 

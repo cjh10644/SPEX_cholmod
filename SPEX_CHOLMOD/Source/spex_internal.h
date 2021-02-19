@@ -584,16 +584,17 @@ SPEX_info spex_ipge // perform IPGE on x based on v
                     // SPEX_FLIP(h[i])-th iteration
     int64_t *prev,  // prev is the index of the found previous entry of the last
                     // one (i.e., 2nd last entry) in v(perm). update if !prev
-    const SPEX_vector *v,// the vector that contains the j-th pivot used to
-                    // compute x in the j-th IPGE iteration
+    const SPEX_matrix *M,// M->v[j] is the vector that contains the j-th pivot
+                    // used to compute x in the j-th IPGE iteration, which is
+                    // the vector v in the equations mentioned above
     const int64_t *perm, // permutation
     const int64_t *perm_inv, // inverse of permutation
     const mpz_t *sd,// array of scaled pivots
     const mpq_t v_scale1, // the first pending scale for v
     const mpq_t v_scale2, // the second pending scale for v
-    const mpz_t prev_unscaled_diag,// the (j-1)-th unscaled diagonal entry
-    const int64_t diag_j,// x[diag_j] is the entry in v with index perm[j]
-    const int64_t j // column index of v in L
+    const int64_t j, // column index of v in M
+    const int64_t cur_piv_index,// the index of j-th pivot in M->v[j]
+    const int64_t prev_piv_index// the index of (j-1)-th pivot in M->v[j-1]
 );
 
 SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v

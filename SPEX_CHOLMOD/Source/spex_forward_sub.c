@@ -51,8 +51,9 @@ SPEX_info spex_forward_sub // perform sparse forward substitution
         if (sgn == 0)       { continue; }
 
         // perform i-th IPGE update for x
-        SPEX_CHECK(spex_ipge(x, x_scale, h, NULL, L->v[i], P,
-            P_inv, sd, SPEX_2D(S, 1, i), SPEX_2D(S, 3, i), Ldiag[i], i));
+        SPEX_CHECK(spex_ipge(x, x_scale, h, NULL, L, P,
+            P_inv, sd, SPEX_2D(S, 1, i), SPEX_2D(S, 3, i), i, Ldiag[i],
+            i==0?-1:Ldiag[i-1]));
         for(int64_t p=0;p<L->v[i]->nz;p++){SPEX_CHECK(SPEX_gmp_printf("%Zd ",L->v[i]->x[p]));}
         SPEX_CHECK(SPEX_gmp_printf("S=%Qd*%Qd sd=%Zd\n x[3]=%Zd\n\n",SPEX_2D(S, 1, i), SPEX_2D(S, 3, i),sd[i],x->x[3]));
     } 
