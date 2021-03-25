@@ -107,7 +107,7 @@ SPEX_info spex_get_nnz_pattern    // find the nnz pattern of L and U
     for (i = 0 ; i < n ; i++)
     {
         for (p = 0 ; p < U->v[i]->nz ; p++)
-       {
+        {
             j = U->v[i]->i[p];
             Uci_new[ rowcount[j] ] = i ;
             Ucx_new[ rowcount[j] ] = p ;

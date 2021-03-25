@@ -8,7 +8,7 @@
 
 //------------------------------------------------------------------------------
 
-// Purpose: This function is to verify if A=LD^(-1)U
+// Purpose: This function is to verify if A=L(P,:)D^(-1)U(:,Q)
 
 #define SPEX_FREE_ALL                 \
     SPEX_matrix_free(&b);             \
@@ -26,12 +26,16 @@ SPEX_info spex_verify
     const SPEX_matrix *A,  // Input matrix
     int64_t *h,            // history vector
     const mpz_t *sd,       // array of scaled pivots
-    const mpq_t *S,        // the pending scale factor matrix
+    mpz_t *d,              // array of unscaled pivots
+    mpq_t *S,              // the pending scale factor matrix
     const int64_t *P,      // row permutation
     const int64_t *P_inv,  // inverse of row permutation
     const int64_t *Q,      // column permutation
     const int64_t *Q_inv,  // inverse of column permutation
     const int64_t *Ldiag,  // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const int64_t *Ucp,    // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx,    // the value of k-th entry is found as 
+                           // U->v[Uci[k]]->x[Ucx[k]]
     const SPEX_options *option// command options
 )
 {
@@ -45,7 +49,7 @@ SPEX_info spex_verify
 
     SPEX_CHECK(SPEX_mpq_init(x_scale));
     SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));
-    SPEX_CHECK(SPEX_matrix_alloc(&b, 1, n, false));
+    SPEX_CHECK(SPEX_matrix_alloc(&b , 1, n, false));
     SPEX_CHECK(SPEX_matrix_alloc(&b2, 1, n, false));
 
     // -------------------------------------------------------------------------
@@ -57,29 +61,29 @@ SPEX_info spex_verify
     for (i = 0; i < n; i++)
     {
         tmp = rand();
-        SPEX_CHECK(SPEX_mpz_set_si(b->v[0]->x[i], i+1));//tmp));
+        SPEX_CHECK(SPEX_mpz_set_si(b->v[0]->x[i], i+1));//tmp));//TODO?
     }
 
     // -------------------------------------------------------------------------
-    // solve LD^(-1)U(:,Q)x = b for x
+    // solve LD^(-1)Ux = b for x
     // -------------------------------------------------------------------------
-    SPEX_CHECK(SPEX_solve(&x, b, h, A, L, U, S, sd, Ldiag, P, P_inv, Q_inv,
-        true, option));
+    SPEX_CHECK(SPEX_solve(&x, b, h, A, L, U, S, sd, d, Ldiag, Ucp, Ucx,
+        P, P_inv, Q, Q_inv, true, option));
 
     // -------------------------------------------------------------------------
-    // compute b2 = A(:,Q)*x(P)
+    // compute b2 = A*x
     // -------------------------------------------------------------------------
     for (i = 0; i < n; i++)
     {
-        SPEX_CHECK(SPEX_mpz_sgn(&sgn, x->v[0]->x[P[i]]));
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, x->v[0]->x[i]));
         if (sgn == 0) { continue;}
 
-        for (int64_t p = 0; p < A->v[Q[i]]->nz; p++)
+        for (int64_t p = 0; p < A->v[i]->nz; p++)
         {
-            int64_t j = A->v[Q[i]]->i[p];
+            int64_t j = A->v[i]->i[p];
             // b2[j] += x[i]*A(j,i)
             SPEX_CHECK(SPEX_mpz_addmul(b2->v[0]->x[j],
-                                       x->v[0]->x[P[i]], A->v[Q[i]]->x[p]));
+                                       x->v[0]->x[i], A->v[i]->x[p]));
         }
     }
     // update b2->scale = x->scale*A->scale
@@ -93,7 +97,6 @@ SPEX_info spex_verify
     // integer values b2*b->scale and b*b->scale. b*b->scale are the values
     // stored in b->v->x. It can be shown that the resulted b2->scale = sd[n-1]
     SPEX_CHECK(SPEX_mpq_div(b2->scale, b2->scale, b->scale));
-    SPEX_CHECK(SPEX_gmp_printf("b2->scale=%Qd, sd[n-1]=%Zd\n", b2->scale,sd[n-1]));
 #ifdef SPEX_DEBUG
     SPEX_CHECK(SPEX_mpq_cmp_z(&sgn, b2->scale, sd[n-1]));
     ASSERT(sgn == 0);
@@ -105,7 +108,6 @@ SPEX_info spex_verify
         SPEX_CHECK(SPEX_mpz_divexact(b2->v[0]->x[i],
                                      b2->v[0]->x[i], SPEX_MPQ_NUM(b2->scale)));
 
-        SPEX_CHECK(SPEX_gmp_printf("x= %Zd, Ax=%Zd, b=%Zd\n", x->v[0]->x[P[i]],b2->v[0]->x[i],b->v[0]->x[i]));
         SPEX_CHECK(SPEX_mpz_cmp(&sgn, b2->v[0]->x[i], b->v[0]->x[i]));
         if (sgn != 0)
         {

@@ -21,19 +21,25 @@ SPEX_info spex_forward_sub // perform sparse forward substitution
 (
     SPEX_vector *x,     // Input: the right-hand-side vector
                         // Output: solution x
-    mpq_t x_scale,      // pending scale for x, initially 1
     int64_t *h,         // history vector for x
     const SPEX_matrix *L,// matrix L
+    const SPEX_matrix *U,// matrix U
     const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
-    const mpq_t *S,     // the pending scale factor matrix
+    const int64_t *Ucp, // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx, // the value of k-th entry is found as 
+                        // U->v[Uci[k]]->x[Ucx[k]]
+    mpq_t *S,           // the pending scale factor matrix
     const mpz_t *sd,    // array of scaled pivots
+    mpz_t *d,           // array of unscaled pivots
     const int64_t *P,   // row permutation
-    const int64_t *P_inv// inverse of row permutation
+    const int64_t *P_inv,// inverse of row permutation
+    const int64_t *Q    // column permutation
 )
 {
     SPEX_info info;
     int sgn;
-    if (!x || !h || !L || !Ldiag || !S || !P || !P_inv || !sd)
+    if (!x || !h || !L || !U || !Ldiag || !Ucp || !Ucx ||
+        !S || !P || !P_inv || !Q || !sd)
     {
         return SPEX_INCORRECT_INPUT;
     }
@@ -51,19 +57,10 @@ SPEX_info spex_forward_sub // perform sparse forward substitution
         if (sgn == 0)       { continue; }
 
         // perform i-th IPGE update for x
-        SPEX_CHECK(spex_ipge(x, x_scale, h, NULL, L, P,
-            P_inv, sd, SPEX_2D(S, 1, i), SPEX_2D(S, 3, i), i, Ldiag[i],
-            i==0?-1:Ldiag[i-1]));
-        for(int64_t p=0;p<L->v[i]->nz;p++){SPEX_CHECK(SPEX_gmp_printf("%Zd ",L->v[i]->x[p]));}
-        SPEX_CHECK(SPEX_gmp_printf("S=%Qd*%Qd sd=%Zd\n x[3]=%Zd\n\n",SPEX_2D(S, 1, i), SPEX_2D(S, 3, i),sd[i],x->x[3]));
-    } 
-    // apply x_scale to x[P[n-1]] and set x_scale to 1
-    /*SPEX_CHECK(SPEX_mpz_divexact(x->x[P[n-1]],
-                            x->x[P[n-1]], SPEX_MPQ_DEN(x_scale)));
-    SPEX_CHECK(SPEX_mpz_mul(x->x[P[n-1]],
-                            x->x[P[n-1]], SPEX_MPQ_NUM(x_scale)));
-    SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));*/
-        SPEX_CHECK(SPEX_gmp_printf("x_scale=%Qd,x[3]=%Zd\n",x_scale,x->x[3]));
+        SPEX_CHECK(spex_ipge(x, h, NULL, L->v[i], P, P_inv, sd,
+            d, U->v[i]->x[Ucx[Ucp[Q[i]+1]-1]],
+            SPEX_2D(S, 1, i), SPEX_2D(S, 3, i), SPEX_2D(S, 2, i), i, Ldiag[i]));
+    }
 
     return SPEX_OK; 
 }

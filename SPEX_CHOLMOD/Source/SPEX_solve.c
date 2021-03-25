@@ -8,7 +8,7 @@
 
 //------------------------------------------------------------------------------
 
-/* Purpose: This function solves the linear system LD^(-1)U x = b. It
+/* Purpose: This function solves the linear system L(P,:)D^(-1)U(:,Q) x = b. It
  * essnetially serves as a wrapper for all forward and backward substitution
  * routines. This function always returns the solution matrix x as a mpz_t
  * matrix with additional pending scale factor. If a user desires to have
@@ -35,7 +35,9 @@
  *
  * sd:       array of pivots with pending scale applied
  *
- * P, P_inv & Q_inv: the permutation vectors. unmodified on input/output.
+ * d:        array of pivots before applying the pending scale
+ *
+ * P, P_inv & Q, Q_inv: the permutation vectors. unmodified on input/output.
  *
  * keep_b:   indicate if caller wants to keep the vector b. If not, this
  *           function will not make a copy of b before forward_sub and
@@ -46,7 +48,7 @@
  */
 
 #define SPEX_FREE_WORK                  \
-    SPEX_MPQ_CLEAR (x_scale) ;
+    spex_delete_mpz_array(&x_col, n) ;
 
 #define SPEX_FREE_ALL                   \
     SPEX_FREE_WORK                      \
@@ -54,7 +56,7 @@
 
 #include "spex_internal.h"
 
-SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
+SPEX_info SPEX_solve     // solves Ax = b via REF LU factorization of A
 (
     // Output
     SPEX_matrix **x_handle, // rational solution to the system
@@ -64,11 +66,16 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
     const SPEX_matrix *A,   // Input matrix
     const SPEX_matrix *L,   // lower triangular matrix
     const SPEX_matrix *U,   // upper triangular matrix
-    const mpq_t *S,         // the pending scale factor matrix
+    mpq_t *S,               // the pending scale factor matrix
     const mpz_t *sd,        // array of scaled pivots
+    mpz_t *d,               // array of unscaled pivots
     const int64_t *Ldiag,   // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const int64_t *Ucp,     // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx,     // the value of k-th entry is found as 
+                            // U->v[Uci[k]]->x[Ucx[k]]
     const int64_t *P,       // row permutation
     const int64_t *P_inv,   // inverse of row permutation
+    const int64_t *Q,       // column permutation
     const int64_t *Q_inv,   // inverse of column permutation
     const bool keep_b,      // indicate if b will be reused
     const SPEX_options* option // Command options
@@ -95,25 +102,30 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
     //--------------------------------------------------------------------------
 
     int64_t i, j, n = L->n;
-    mpq_t x_scale ;
-    SPEX_MPQ_SET_NULL (x_scale) ;
     SPEX_matrix *x = NULL;   // final solution
+    mpz_t *x_col = NULL;     // used to permute each col of x
 
-    SPEX_CHECK(SPEX_mpq_init(x_scale));
     // even though x will be dense, we initialize it as sparse, which make each
     // of its columns initialized with length 0, and we will allocate space
     // for its mpz_t vector later depend on the value keep_b 
     SPEX_CHECK(SPEX_matrix_alloc(&x, b->n, n, true));
+    x_col = spex_create_mpz_array(n);
+    if (!x_col)
+    {
+        SPEX_FREE_ALL;
+        return SPEX_OUT_OF_MEMORY;
+    }
 
     for (j = 0; j < b->n; j++)
     {
-        // x_scale = 1
-        SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));
-
         //----------------------------------------------------------------------
         // solve each column of b seperately
         //----------------------------------------------------------------------
+        // remove x->v[j]->i which is not needed for dense vector
+        SPEX_FREE(x->v[j]->i);
         // make a copy of b->v[j] to x->v[j]
+        // Notice that we don't need to permute b here since rows of L are
+        // maintained in the same order as those of A
         if (keep_b)
         {
             // just need to allocate space for x, while let i still be NULL
@@ -136,21 +148,30 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
         }
         x->v[j]->nzmax = n;
 
-        // x = (LD^(-1))\x, via forward substitution
-        SPEX_CHECK(spex_forward_sub(x->v[j], x_scale, h, L, Ldiag, S, sd,
-            P, P_inv));
-        for (i=0;i<n;i++){SPEX_CHECK(SPEX_gmp_printf("x[%d]=%Zd\n",i,x->v[j]->x[i]));}
+        // solve y for LD^(-1)y(P)=b, via forward substitution
+        SPEX_CHECK(spex_forward_sub(x->v[j], h, L, U, Ldiag, Ucp, Ucx, S, sd, d,
+            P, P_inv, Q));
 
-        // x = U\x, via back substitution
-        SPEX_CHECK(spex_backward_sub(x->v[j], x_scale, U, S, sd, P, Q_inv));
-        for (i=0;i<n;i++){SPEX_CHECK(SPEX_gmp_printf("x[%d]=%Zd\n",i,x->v[j]->x[i]));}
+        // solve x for Ux(Q_inv) = y(P), via backward substitution
+        SPEX_CHECK(spex_backward_sub(x->v[j], U, S, sd, P, Q_inv));
+
+        // permute x using Q
+        for (i = 0; i < n; i++)
+        {
+            SPEX_CHECK(SPEX_mpz_swap(x_col[i], x->v[j]->x[P[Q_inv[i]]]));
+        }
+        // swap x->v[j]->x and x_col, then x->v[j]->x is permuted
+        // and x_col unchanged
+        mpz_t *tmp = x->v[j]->x; x->v[j]->x = x_col; x_col = tmp;
     }
+
     //--------------------------------------------------------------------------
     // update the scale for the solution.
     //--------------------------------------------------------------------------
-    // set the scaling factor x->scale = b->scale / (x_scale* A->scale)
+    // set the scaling factor x->scale = sd[n-1] * b->scale / A->scale
     // the real solution is obtained by x->v[j]->x[i]/x->scale
-    SPEX_CHECK(SPEX_mpq_div(x->scale, b->scale, x_scale));
+    SPEX_CHECK(SPEX_mpz_set(SPEX_MPQ_NUM(x->scale), sd[n-1]));
+    SPEX_CHECK(SPEX_mpq_mul(x->scale, x->scale, b->scale));
     SPEX_CHECK(SPEX_mpq_div(x->scale, x->scale, A->scale));
 
     //--------------------------------------------------------------------------

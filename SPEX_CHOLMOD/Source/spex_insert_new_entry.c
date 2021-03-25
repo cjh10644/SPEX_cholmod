@@ -45,6 +45,7 @@ SPEX_info spex_insert_new_entry
     // d = v2(v2_diag) = d*S1
     SPEX_CHECK(SPEX_mpz_set(d, v2->x[v2_diag]));
     // mpq_equal is said to be faster than mpq_cmq
+    SPEX_CHECK(SPEX_mpq_equal(&r, one, one));
     SPEX_CHECK(SPEX_mpq_equal(&r, S3, one));
     if (r == 0) // S3 != 1
     {

@@ -10,8 +10,8 @@
 
 /* Purpose: This function performs sparse REF backward substitution, solving
  * the system Ux = b. x is internally multiplied by the determinant of A to
- * maintain integral. x_scale is set to 1/det(A) in the output. Once x_scale is
- * applied to x, the solution vector will not be in integer domain.
+ * maintain integral. In addition, x is also permuted by Q. Therefore the
+ * real solution should be found as x(i) = x(Q_inv(i))/det(A).
  *
  * U is a sparse mpz matrix, which is stored by row, and x is a dense mpz
  * vector.
@@ -29,8 +29,6 @@
 SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 (
     SPEX_vector *x,         // right hand side vector
-    mpq_t x_scale,          // pending scale for x, applying this x_scale to
-                            // x will result in a non-integer value
     const SPEX_matrix *U,   // input upper triangular matrix
     const mpq_t *S,         // the pending scale factor matrix
     const mpz_t *sd,        // array of scaled pivots
@@ -40,21 +38,21 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 {
     SPEX_info info ;
     int sgn;
-    int64_t n = U->n;
+    int64_t i, j, p, n = U->n;
     mpq_t pending_scale; SPEX_MPQ_SET_NULL(pending_scale);// TODO make input
     mpz_t tmpz; SPEX_MPZ_SET_NULL(tmpz);
     SPEX_CHECK(SPEX_mpq_init(pending_scale));
     SPEX_CHECK(SPEX_mpz_init(tmpz));
 
     // Start at x[n-1], since x[n] will remain the same
-    for (int64_t i = n-2; i >= 0; i--)
+    for (i = n-2; i >= 0; i--)
     {
         // tmpz = 0
         SPEX_CHECK(SPEX_mpz_set_ui(tmpz, 0));
 
-        for (int64_t p = 0; p < U->v[i]->nz; p++)
+        for (p = 0; p < U->v[i]->nz; p++) // i-th row of U
         {
-            int64_t j = U->v[i]->i[p];// the real col index is Q_inv[j]
+            j = U->v[i]->i[p];// the real col index is Q_inv[j]
 
             // skip if diagonal or corresponding entry in x is zero
             if (Q_inv[j] == i) {continue;}
@@ -62,7 +60,7 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
             if (sgn == 0) {continue;}
 
             // tmpz -= U(i,j)*x[j]
-            SPEX_CHECK(SPEX_mpz_submul(tmpz, U->v[i]->x[p], x->x[P[Q_inv[j]]]));
+            SPEX_CHECK(SPEX_mpz_submul(tmpz, U->v[i]->x[p],x->x[P[Q_inv[j]]]));
         }
         // pending_scale = S(2, i)*S(3, i)
         SPEX_CHECK(SPEX_mpq_mul(pending_scale,
@@ -72,16 +70,12 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
         SPEX_CHECK(SPEX_mpz_mul(tmpz, tmpz, SPEX_MPQ_NUM(pending_scale)));
 
         // x[i] = x[i]*sd[n-1]+tmpz
-        SPEX_CHECK(SPEX_mpz_mul(x->x[i], x->x[i], sd[n-1]));
-        SPEX_CHECK(SPEX_mpz_add(x->x[i], x->x[i], tmpz));
+        SPEX_CHECK(SPEX_mpz_mul(x->x[P[i]], x->x[P[i]], sd[n-1]));
+        SPEX_CHECK(SPEX_mpz_add(x->x[P[i]], x->x[P[i]], tmpz));
 
         // x[i] = x[i]/sd[i]
-        SPEX_CHECK(SPEX_mpz_divexact(x->x[i], x->x[i], sd[i]));
+        SPEX_CHECK(SPEX_mpz_divexact(x->x[P[i]], x->x[P[i]], sd[i]));
     }
-
-    // set x_scale = 1/sd[n]
-    SPEX_CHECK(SPEX_mpq_set_ui(x_scale, 1, 1));
-    SPEX_CHECK(SPEX_mpz_set(SPEX_MPQ_DEN(x_scale), sd[n-1]));
 
     SPEX_FREE_ALL;
     return (SPEX_OK) ;

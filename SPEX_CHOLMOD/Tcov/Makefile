@@ -27,7 +27,7 @@ LDLIBS += -lm -lgmp -lmpfr -lsuitesparseconfig
 run: runtests
 	./covall
 
-all: test 
+all: test demo
 
 CS = tcov_malloc_test.o \
     spex_backward_sub.o             spex_get_scattered_v.o \
@@ -60,8 +60,8 @@ SPEX_%.c:
 spex_%.c:
 	- ln -s ../Source/$@
 
-#SLIPLU.c:
-#	- ln -s ../Demo/$@
+LU_update_demo.c:
+	- ln -s ../Demo/$@
 
 #demos.c:
 #	- ln -s ../Demo/$@
@@ -69,12 +69,16 @@ spex_%.c:
 test: $(CS) tcov_test.c
 	$(CC) $(LDFLAGS) tcov_test.c $(CFLAGS) -o tcov_test $(CS) $(LDLIBS)
 
-#SLIPLU: $(CS) SLIPLU.c demos.c
-#	$(CC) $(LDFLAGS) SLIPLU.c demos.c $(CFLAGS) -o SLIPLU $(CS) $(LDLIBS)
+demo: $(CS) LU_update_demo.c
+	$(CC) $(LDFLAGS) LU_update_demo.c $(CFLAGS) -o LU_update_demo $(CS) $(LDLIBS)
+
+rundemo: demo
+	- ./LU_update_demo > demo.out
 
 # run all statement coverage tests
 runtests: all
-	- ./tcov_test
+	- ./tcov_test 4 30 > test.out
+	- #./LU_update_demo
 
 # To run with valgrind:
 V = valgrind #--leak-check=full
@@ -82,12 +86,13 @@ V = valgrind #--leak-check=full
 # run all statement coverage tests but with valgrind
 vtests: all
 	- $(V) ./tcov_test
+	- $(V) ./LU_update_demo
 
 # remove all files not in the original distribution, including symbolic links
 clean:
 	- $(RM) *.o *.bbg *.da *.gcov *.gcda *gcno
-	- $(RM) tcov_test *.out *.a cov.sort out
-	- $(RM) -r SPEX_*.c spex_*.c *.dSYM
+	- $(RM) tcov_test LU_update_demo *.out *.a cov.sort out
+	- $(RM) -r SPEX_*.c spex_*.c *.dSYM LU_update_demo.c
 
 purge: distclean
 

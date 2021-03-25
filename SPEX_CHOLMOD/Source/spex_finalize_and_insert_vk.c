@@ -28,7 +28,7 @@ SPEX_info spex_finalize_and_insert_vk
     SPEX_matrix *L,   // matrix L
     mpq_t *S,         // array of size 3*n that stores pending scales
     mpz_t *d,         // array of unscaled pivots
-    const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    int64_t *Ldiag,   // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const mpz_t *sd,  // array of scaled pivots
     const int64_t *Q, // the column permutation
     const int64_t *P_inv,// inverse of row permutation
@@ -38,17 +38,26 @@ SPEX_info spex_finalize_and_insert_vk
 )
 {
     SPEX_info info;
-    int64_t i, p = 0, vk_nz = vk_dense->nz;
+    int64_t i, p = 0, real_i, vk_nz = vk_dense->nz, Lk_nz;
+    int sgn;
 
     // move entries to U
     while(p < vk_nz)
     {
         i = vk_dense->i[p];
-        if (P_inv[i] < k)
+        real_i = P_inv[i];
+        if (real_i < k)
         {
-            SPEX_CHECK(spex_insert_new_entry(vk_dense->x[i], U->v[i],
-                SPEX_2D(S, 2, i), L->v[i], SPEX_2D(S, 1, i), SPEX_2D(S, 3, i),
-                d[i], Q[k], Ldiag[i], one));
+            SPEX_CHECK(SPEX_gmp_printf("inserting U(%ld,%ld)=%Zd\n",real_i,Q[k],vk_dense->x[i]));
+            SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense->x[i]));
+            if (sgn != 0)
+            {
+                // insert vk_dense->x[i] to U(P_inv[i],Q[k]) by swapping
+                SPEX_CHECK(spex_insert_new_entry(vk_dense->x[i], U->v[real_i],
+                    SPEX_2D(S, 2, real_i), L->v[real_i], SPEX_2D(S, 1, real_i),
+                    SPEX_2D(S, 3, real_i), d[real_i], Q[k], Ldiag[real_i],
+                    one));
+            }
             vk_nz--;
             vk_dense->i[p] = vk_dense->i[vk_nz];
         }
@@ -64,10 +73,15 @@ SPEX_info spex_finalize_and_insert_vk
         SPEX_CHECK(SPEX_vector_realloc(L->v[k], vk_nz));
     }
 
-    // move the remaining entries to L->v[k]
+    // move the remaining nonzero entries to L->v[k]
+    Lk_nz = 0;
     for (p = 0; p < vk_nz; p++)
     {
         i = vk_dense->i[p];
+        SPEX_CHECK(SPEX_gmp_printf("vk(%ld)=%Zd\n",i,vk_dense->x[i]));
+        SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense->x[i]));
+        if (sgn == 0)        {continue;}
+
         h[i] = SPEX_FLIP(h[i]);
         if (h[i] < k-1)
         {
@@ -82,11 +96,14 @@ SPEX_info spex_finalize_and_insert_vk
         if (P_inv[i] == diag)
         {
             SPEX_CHECK(SPEX_mpz_set(d[k], vk_dense->x[i]));
+            Ldiag[k] = Lk_nz;
         }
-        SPEX_CHECK(SPEX_mpz_swap(L->v[k]->x[p], vk_dense->x[i]));
-        L->v[k]->i[p] = i;
+        SPEX_CHECK(SPEX_gmp_printf("inserting L(%ld,%ld)=%Zd\n",i,k,vk_dense->x[i]));
+        SPEX_CHECK(SPEX_mpz_swap(L->v[k]->x[Lk_nz], vk_dense->x[i]));
+        L->v[k]->i[Lk_nz] = i;
+        Lk_nz++;
     }
-    L->v[k]->nz = vk_nz;
+    L->v[k]->nz = Lk_nz;
 
     return SPEX_OK;
 }

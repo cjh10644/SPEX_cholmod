@@ -443,8 +443,6 @@ SPEX_info spex_cppu
     mpz_t *sd,       // array of size n that stores the scaled pivot
     spex_scattered_vector *Lk_dense_col,// scattered column k of L
     spex_scattered_vector *Uk_dense_row,// scattered column k of U
-    const mpq_t vk_scale,// scale factor for newly inserted column vk, which
-                     // should be in col k of L in the last iteration when used.
     int64_t *inext,  // the index of first off-diag entry in col k of L
     int64_t *jnext,  // the index of first off-diag entry in row k of U
     int64_t *h,      // allocated vector that can be used for history vector.
@@ -471,8 +469,6 @@ SPEX_info spex_dppu1
     mpz_t *sd,       // array of size n that stores the scaled pivot
     spex_scattered_vector *Lk_dense_col,// scattered column k of L
     spex_scattered_vector *Uk_dense_row,// scattered column k of U
-    const mpq_t vk_scale,// scale factor for newly inserted column vk, which
-                     // should be in col k of L in the last iteration when used.
     int64_t *inext,  // the index of first off-diag entry in col k of L
     int64_t *h,      // allocated vector that can be used for history vector.
                      // All entries are maintained to be >= -1
@@ -499,8 +495,6 @@ SPEX_info spex_dppu2
     mpz_t *sd,       // array of size n that stores the scaled pivot
     spex_scattered_vector *Lk_dense_col,// scattered column k of L
     spex_scattered_vector *Uk_dense_row,// scattered column k of U
-    const mpq_t vk_scale,// scale factor for newly inserted column vk, which
-                     // should be in col k of L in the last iteration when used.
     int64_t *jnext,  // the index of first off-diag entry in row k of U
     int64_t *h,      // allocated vector that can be used for history vector.
                      // All entries are maintained to be >= -1
@@ -526,7 +520,7 @@ SPEX_info spex_finalize_and_insert_vk
     SPEX_matrix *L,   // matrix L
     mpq_t *S,         // array of size 3*n that stores pending scales
     mpz_t *d,         // array of unscaled pivots
-    const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    int64_t *Ldiag,   // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
     const mpz_t *sd,  // array of scaled pivots
     const int64_t *Q, // the column permutation
     const int64_t *P_inv,// inverse of row permutation
@@ -579,29 +573,29 @@ SPEX_info spex_ipge // perform IPGE on x based on v
 (
     spex_scattered_vector *sv_x,// array of size n for x in the scattered form.
                     // x could be dense by setting sv_x->i = NULL.
-    mpq_t x_scale,  // pending scale for x
     int64_t *h,     // history vector for x, x[i] was last updated in the
                     // SPEX_FLIP(h[i])-th iteration
     int64_t *prev,  // prev is the index of the found previous entry of the last
                     // one (i.e., 2nd last entry) in v(perm). update if !prev
-    const SPEX_matrix *M,// M->v[j] is the vector that contains the j-th pivot
+    SPEX_vector *v, // v is the vector that contains the j-th pivot
                     // used to compute x in the j-th IPGE iteration, which is
                     // the vector v in the equations mentioned above
     const int64_t *perm, // permutation
     const int64_t *perm_inv, // inverse of permutation
     const mpz_t *sd,// array of scaled pivots
-    const mpq_t v_scale1, // the first pending scale for v
-    const mpq_t v_scale2, // the second pending scale for v
-    const int64_t j, // column index of v in M
-    const int64_t cur_piv_index,// the index of j-th pivot in M->v[j]
-    const int64_t prev_piv_index// the index of (j-1)-th pivot in M->v[j-1]
+    mpz_t *d,       // array of unscaled pivots
+    const mpz_t new_dj,// new value for the j-th unscaled pivot
+    mpq_t v_scale1, // the first pending scale for v
+    mpq_t v_scale2, // the second pending scale for v
+    mpq_t v_scale3, // a third pending scale not used for v
+    const int64_t j, // column index of v
+    const int64_t piv_j // the index of pivot in vector v
 );
 
 SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
 (
     spex_scattered_vector *sv_x,// the scattered version of solution for LDx=v,
                         // using the first k-1 columns of L
-    mpq_t x_scale,      // pending scale for x
     int64_t *h,         // history vector for x
     int64_t *last_update,// the number of finished IPGE iterations, which is
                         // also the number of columns in L used last time
@@ -610,32 +604,41 @@ SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
     const int64_t k,    // compute x up to k-th IPGE iteration, that is, using
                         // the first k-1 columns of L
     const SPEX_matrix *L,// matrix L
+    const SPEX_matrix *U,// matrix U
     const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
-    const mpq_t *S,     // the pending scale factor matrix
+    const int64_t *Ucp, // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx, // the value of k-th entry is found as
+                        // U->v[Uci[k]]->x[Ucx[k]]
+    mpq_t *S,           // the pending scale factor matrix
     const mpz_t *sd,    // array of scaled pivots
+    mpz_t *d,           // array of unscaled pivots
     const int64_t *P,   // row permutation
-    const int64_t *P_inv// inverse of row permutation
+    const int64_t *P_inv,// inverse of row permutation
+    const int64_t *Q    // column permutation
 );
 
 SPEX_info spex_forward_sub // perform sparse forward substitution
 (
     SPEX_vector *x,     // Input: the right-hand-side vector
                         // Output: solution x
-    mpq_t x_scale,      // pending scale for x, initially 1
     int64_t *h,         // history vector for x
     const SPEX_matrix *L,// matrix L
+    const SPEX_matrix *U,// matrix U
     const int64_t *Ldiag,// L(k,k) can be found as L->v[k]->x[Ldiag[k]]
-    const mpq_t *S,     // the pending scale factor matrix
+    const int64_t *Ucp, // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx, // the value of k-th entry is found as 
+                        // U->v[Uci[k]]->x[Ucx[k]]
+    mpq_t *S,           // the pending scale factor matrix
     const mpz_t *sd,    // array of scaled pivots
+    mpz_t *d,           // array of unscaled pivots
     const int64_t *P,   // row permutation
-    const int64_t *P_inv// inverse of row permutation
+    const int64_t *P_inv,// inverse of row permutation
+    const int64_t *Q    // column permutation
 );
 
 SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 (
     SPEX_vector *x,         // right hand side vector
-    mpq_t x_scale,          // pending scale for x, applying this x_scale to
-                            // x will result in a non-integer value
     const SPEX_matrix *U,   // input upper triangular matrix
     const mpq_t *S,         // the pending scale factor matrix
     const mpz_t *sd,        // array of scaled pivots
@@ -644,19 +647,23 @@ SPEX_info spex_backward_sub  // performs sparse REF backward substitution
 );
 
 SPEX_info spex_verify
-(   
+(
     bool *correct,         // indicate if the verification is passed
     const SPEX_matrix *L,  // lower triangular matrix
     const SPEX_matrix *U,  // upper triangular matrix
     const SPEX_matrix *A,  // Input matrix
     int64_t *h,            // history vector
     const mpz_t *sd,       // array of scaled pivots
-    const mpq_t *S,        // the pending scale factor matrix
+    mpz_t *d,              // array of unscaled pivots
+    mpq_t *S,              // the pending scale factor matrix
     const int64_t *P,      // row permutation
     const int64_t *P_inv,  // inverse of row permutation
     const int64_t *Q,      // column permutation
     const int64_t *Q_inv,  // inverse of column permutation
     const int64_t *Ldiag,  // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const int64_t *Ucp,    // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx,    // the value of k-th entry is found as 
+                           // U->v[Uci[k]]->x[Ucx[k]]
     const SPEX_options *option// command options
 );
 

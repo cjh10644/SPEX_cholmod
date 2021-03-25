@@ -10,9 +10,9 @@
 //------------------------------------------------------------------------------
 
 // Purpose: This function is called to create and initialize a mpz vector with
-// given size nzmax. The mpz_t vector is allocated with length nzmax. If IsDense
-// is true, then the nnz pattern vector i is set to NULL. Otherwise, i is
-// allocated with length of nzmax.
+// given size nzmax. The mpz_t vector is allocated with length nzmax. If
+// IsSparse is true, then i is allocated with length of nzmax. Otherwise,
+// the nnz pattern vector i is set to NULL.
 
 #include "spex_internal.h"
 

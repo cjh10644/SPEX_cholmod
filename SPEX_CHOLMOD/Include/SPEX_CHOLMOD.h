@@ -521,7 +521,8 @@ SPEX_info SPEX_LUU
     int64_t *P_inv,         // inverse of row permutation
     int64_t *Q,             // column permutation
     int64_t *Q_inv,         // inverse of column permutation
-    SPEX_vector *vk,        // the inserted column
+    SPEX_vector **vk,       // pointer to the inserted column, which will be
+                            // swapped with A->v[k] in the output if succeed
     int64_t k,              // the column index that vk will be inserted
     const SPEX_options *option// command parameters
 );
@@ -540,11 +541,16 @@ SPEX_info SPEX_solve     // solves the linear system LD^(-1)U x = b
     const SPEX_matrix *A,   // Input matrix
     const SPEX_matrix *L,   // lower triangular matrix
     const SPEX_matrix *U,   // upper triangular matrix
-    const mpq_t *S,         // the pending scale factor matrix
+    mpq_t *S,               // the pending scale factor matrix
     const mpz_t *sd,        // array of scaled pivots
+    mpz_t *d,               // array of unscaled pivots
     const int64_t *Ldiag,   // L(k,k) can be found as L->v[k]->x[Ldiag[k]]
+    const int64_t *Ucp,     // col pointers for col-wise nnz pattern of U
+    const int64_t *Ucx,     // the value of k-th entry is found as 
+                            // U->v[Uci[k]]->x[Ucx[k]]
     const int64_t *P,       // row permutation
     const int64_t *P_inv,   // inverse of row permutation
+    const int64_t *Q,       // column permutation
     const int64_t *Q_inv,   // inverse of column permutation
     const bool keep_b,      // indicate if b will be reused
     const SPEX_options* option // Command options
@@ -621,6 +627,8 @@ SPEX_info SPEX_mpz_cmp (int *r, const mpz_t x, const mpz_t y) ;
 SPEX_info SPEX_mpz_cmpabs (int *r, const mpz_t x, const mpz_t y) ;
 
 SPEX_info SPEX_mpz_cmp_ui (int *r, const mpz_t x, const uint64_t y) ;
+
+SPEX_info SPEX_mpz_cmpabs_ui (int *r, const mpz_t x, const uint64_t y) ;
 
 SPEX_info SPEX_mpz_sgn (int *sgn, const mpz_t x) ;
 

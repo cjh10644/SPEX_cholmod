@@ -629,6 +629,7 @@ SPEX_info SPEX_mpz_init
 
 /* Purpose: Safely initialize an mpz_t number with space for size bits */
 
+#if 0
 SPEX_info SPEX_mpz_init2
 (
     mpz_t x,                // Number to be initialized
@@ -640,6 +641,7 @@ SPEX_info SPEX_mpz_init2
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_set
@@ -721,6 +723,7 @@ SPEX_info SPEX_mpz_set_d
 
 /* Purpose: Safely set a double number = a mpz */
 
+#if 0
 SPEX_info SPEX_mpz_get_d
 (
     double *x,
@@ -750,6 +753,7 @@ SPEX_info SPEX_mpz_get_si
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_swap
@@ -775,6 +779,7 @@ SPEX_info SPEX_mpz_swap
 
 /* Purpose: Safely set an mpz number = mpq number */
 
+#if 0
 SPEX_info SPEX_mpz_set_q
 (
     mpz_t x,
@@ -786,6 +791,7 @@ SPEX_info SPEX_mpz_set_q
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_mul
@@ -976,6 +982,7 @@ SPEX_info SPEX_mpz_gcd
 
 /* Purpose: Safely compute the lcm of two mpz numbers */
 
+#if 0
 SPEX_info SPEX_mpz_lcm
 (
     mpz_t lcm,   // lcm of x and y
@@ -988,6 +995,7 @@ SPEX_info SPEX_mpz_lcm
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_neg
@@ -1013,6 +1021,7 @@ SPEX_info SPEX_mpz_neg
 
 /* Purpose: Safely set x = |y| */
 
+#if 0
 SPEX_info SPEX_mpz_abs
 (
     mpz_t x,
@@ -1024,6 +1033,7 @@ SPEX_info SPEX_mpz_abs
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_cmp
@@ -1052,6 +1062,7 @@ SPEX_info SPEX_mpz_cmp
 /* Purpose: Safely compare the absolute value of two mpz numbers,
  * r > 0 if |x| > |y|, r = 0 if |x| = |y|, and r < 0 if |x| < |y| */
 
+#if 0
 SPEX_info SPEX_mpz_cmpabs
 (
     int *r,
@@ -1064,6 +1075,7 @@ SPEX_info SPEX_mpz_cmpabs
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpz_cmp_ui
@@ -1080,6 +1092,25 @@ SPEX_info SPEX_mpz_cmp_ui
 {
     SPEX_GMP_WRAPPER_START ;
     *r = mpz_cmp_ui (x, (unsigned long int) y) ;
+    SPEX_GMP_WRAPPER_FINISH ;
+    return (SPEX_OK) ;
+}
+
+//------------------------------------------------------------------------------
+// SPEX_mpz_cmpabs_ui
+//------------------------------------------------------------------------------
+
+/* Purpose: Safely compare the absolute value of a mpz number and a uint64_t
+ * integer r > 0 if x > y, r = 0 if x = y, and r < 0 if x < y */
+SPEX_info SPEX_mpz_cmpabs_ui
+(
+    int *r,
+    const mpz_t x,
+    const uint64_t y
+)
+{
+    SPEX_GMP_WRAPPER_START ;
+    *r = mpz_cmpabs_ui (x, (unsigned long int) y) ;
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
@@ -1108,6 +1139,7 @@ SPEX_info SPEX_mpz_sgn
 
 /* Purpose: Safely return the size of x measured in number of digits
  * in the given base */
+#if 0
 SPEX_info SPEX_mpz_sizeinbase
 (
     size_t *size,
@@ -1120,6 +1152,7 @@ SPEX_info SPEX_mpz_sizeinbase
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 //------------------------------------------------------------------------------
@@ -1203,6 +1236,7 @@ SPEX_info SPEX_mpq_canonicalize
 
 /* Purpose: Safely set an mpq number = a double */
 
+#if 0
 SPEX_info SPEX_mpq_set_d
 (
     mpq_t x,
@@ -1214,6 +1248,7 @@ SPEX_info SPEX_mpq_set_d
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpq_set_ui
@@ -1242,6 +1277,8 @@ SPEX_info SPEX_mpq_set_ui
 
 /* Purpose: Safely set an mpq number = an int64_t */
 
+
+#if 0
 SPEX_info SPEX_mpq_set_si
 (
     mpq_t x,
@@ -1272,6 +1309,7 @@ SPEX_info SPEX_mpq_set_num
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpq_set_den
@@ -1297,6 +1335,7 @@ SPEX_info SPEX_mpq_set_den
 
 /* Purpose: Safely set an mpz number = denominator of an mpq number */
 
+#if 0
 SPEX_info SPEX_mpq_get_den
 (
     mpz_t x,
@@ -1326,6 +1365,7 @@ SPEX_info SPEX_mpq_get_d
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpq_swap
@@ -1371,6 +1411,7 @@ SPEX_info SPEX_mpq_neg
 
 /* Purpose: Safely set an mpq number = absolute value of mpq */
 
+#if 0
 SPEX_info SPEX_mpq_abs
 (
     mpq_t x,
@@ -1401,6 +1442,7 @@ SPEX_info SPEX_mpq_add
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpq_mul
@@ -1446,6 +1488,7 @@ SPEX_info SPEX_mpq_div
 /* Purpose: Safely compare two mpq numbers,
  * r > 0 if x > y, r = 0 if x = y, and r < 0 if x < y */
 
+#if 0
 SPEX_info SPEX_mpq_cmp
 (
     int *r,
@@ -1458,6 +1501,7 @@ SPEX_info SPEX_mpq_cmp
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpq_cmp_ui
@@ -1526,6 +1570,7 @@ SPEX_info SPEX_mpq_equal
 
 /* Purpose: Safely set sgn = 0 if x = 0, otherwise, sgn = x/|x| */
 
+#if 0
 SPEX_info SPEX_mpq_sgn
 (
     int *sgn,
@@ -1826,7 +1871,6 @@ SPEX_info SPEX_mpfr_ui_pow_ui
 
 /* Purpose: Safely take the log2 of an mpfr number */
 
-#if 0
 /* This function is currently unused, but kept here for future reference. */
 
 SPEX_info SPEX_mpfr_log2
@@ -1842,14 +1886,12 @@ SPEX_info SPEX_mpfr_log2
     return (SPEX_OK) ;
 }
 
-#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpfr_sgn
 //------------------------------------------------------------------------------
 
 /* Purpose: Safely set sgn = 0 if x = 0, otherwise, sgn = x/|x| */
-
 SPEX_info SPEX_mpfr_sgn
 (
     int *sgn,
@@ -1861,6 +1903,7 @@ SPEX_info SPEX_mpfr_sgn
     SPEX_GMP_WRAPPER_FINISH ;
     return (SPEX_OK) ;
 }
+#endif
 
 //------------------------------------------------------------------------------
 // SPEX_mpfr_free_cache

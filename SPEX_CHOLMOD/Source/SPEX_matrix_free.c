@@ -23,6 +23,7 @@ void SPEX_matrix_free
     {
         SPEX_vector_free(&((*A)->v[i]));
     }
+    SPEX_FREE((*A)->v);
     SPEX_MPQ_CLEAR((*A)->scale);
     SPEX_FREE(*A);
 }
