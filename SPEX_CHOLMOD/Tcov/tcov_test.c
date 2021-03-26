@@ -240,7 +240,6 @@ int main( int argc, char* argv[])
             P_inv[i] = i;
             Q_inv[i] = i;
         }
-        GOTCHA;
         info=SPEX_LUU(A, L, U, d, sd, S, P, P_inv, Q, Q_inv, &vk, k, NULL);
         if(info!=SPEX_SINGULAR && info!=SPEX_OK){TEST_CHECK(info);}
 

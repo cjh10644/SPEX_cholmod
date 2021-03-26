@@ -48,7 +48,6 @@ SPEX_info spex_finalize_and_insert_vk
         real_i = P_inv[i];
         if (real_i < k)
         {
-            SPEX_CHECK(SPEX_gmp_printf("inserting U(%ld,%ld)=%Zd\n",real_i,Q[k],vk_dense->x[i]));
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense->x[i]));
             if (sgn != 0)
             {
@@ -78,7 +77,6 @@ SPEX_info spex_finalize_and_insert_vk
     for (p = 0; p < vk_nz; p++)
     {
         i = vk_dense->i[p];
-        SPEX_CHECK(SPEX_gmp_printf("vk(%ld)=%Zd\n",i,vk_dense->x[i]));
         SPEX_CHECK(SPEX_mpz_sgn(&sgn, vk_dense->x[i]));
         if (sgn == 0)        {continue;}
 
@@ -98,7 +96,6 @@ SPEX_info spex_finalize_and_insert_vk
             SPEX_CHECK(SPEX_mpz_set(d[k], vk_dense->x[i]));
             Ldiag[k] = Lk_nz;
         }
-        SPEX_CHECK(SPEX_gmp_printf("inserting L(%ld,%ld)=%Zd\n",i,k,vk_dense->x[i]));
         SPEX_CHECK(SPEX_mpz_swap(L->v[k]->x[Lk_nz], vk_dense->x[i]));
         L->v[k]->i[Lk_nz] = i;
         Lk_nz++;

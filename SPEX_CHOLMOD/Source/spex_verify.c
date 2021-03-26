@@ -60,8 +60,8 @@ SPEX_info spex_verify
     srand(seed);
     for (i = 0; i < n; i++)
     {
-        tmp = rand();
-        SPEX_CHECK(SPEX_mpz_set_si(b->v[0]->x[i], i+1));//tmp));//TODO?
+        tmp = i+1;//rand(); //TODO
+        SPEX_CHECK(SPEX_mpz_set_si(b->v[0]->x[i], tmp));
     }
 
     // -------------------------------------------------------------------------

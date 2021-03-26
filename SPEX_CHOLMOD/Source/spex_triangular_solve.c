@@ -66,13 +66,12 @@ SPEX_info spex_triangular_solve // perform REF triangular solve for LDx=v
         for (j = *last_update+1; j < k; j++)
         {
             // skip if x(P[j]) == 0
-            printf("P{%ld]=%ld\n",j,P[j]);
             SPEX_CHECK(SPEX_mpz_sgn(&sgn, sv_x->x[P[j]]));
             if (sgn == 0)       { continue; }
 
-            // perform j-th IPGE update for x
-            if(L->v[j]->i[Ldiag[j]] != P[j])     printf("Ldiag[%ld]=%ld\n",j,Ldiag[j]);
+            // TODO add this to all caller of spex_ipge
             ASSERT(L->v[j]->i[Ldiag[j]] == P[j]);
+            // perform j-th IPGE update for x
             SPEX_CHECK(spex_ipge(sv_x, h, i_2ndlast, L->v[j], P, P_inv,
                 sd, d, U->v[j]->x[Ucx[Ucp[Q[j]+1]-1]],
                 SPEX_2D(S, 1, j), SPEX_2D(S, 3, j), SPEX_2D(S, 2, j),

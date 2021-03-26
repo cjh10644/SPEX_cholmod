@@ -153,7 +153,8 @@ SPEX_info SPEX_solve     // solves Ax = b via REF LU factorization of A
             P, P_inv, Q));
 
         // solve x for Ux(Q_inv) = y(P), via backward substitution
-        SPEX_CHECK(spex_backward_sub(x->v[j], U, S, sd, P, Q_inv));
+        SPEX_CHECK(spex_backward_sub(x->v[j], U, (const mpq_t*) S, sd,
+            P, Q_inv));
 
         // permute x using Q
         for (i = 0; i < n; i++)
